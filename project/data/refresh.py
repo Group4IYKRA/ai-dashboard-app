@@ -5,7 +5,8 @@ from query import *
 from config import *
 
 # Define the path to query_result directory
-query_result_dir = os.path.join(os.getcwd(), 'data', 'query_result')
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+query_result_dir = os.path.join(project_root, 'data', 'query_result')
 
 # Ensure the directory exists
 if not os.path.exists(query_result_dir):
