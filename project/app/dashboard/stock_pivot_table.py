@@ -1,12 +1,12 @@
 import pandas as pd
 from dash import html, dash_table
-import os
+from project import download_from_gcs
 
-def create_table():
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    stock_pivot_file = os.path.join(project_root, "data/query_result/stock_pivot_data.pkl")
-    stock_pivot = pd.read_pickle(stock_pivot_file)
+def create_table(stock_pivot=None):
+    if stock_pivot is None:
+        blob_name = 'query_result/stock_pivot_data.csv'
+        stock_pivot_file = download_from_gcs(blob_name)
+        stock_pivot = pd.read_csv(stock_pivot_file)
 
     return html.Div([
         html.H3(

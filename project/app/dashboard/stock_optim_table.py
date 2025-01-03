@@ -1,12 +1,12 @@
 import pandas as pd
 from dash import html, dash_table
-import os
+from project import download_from_gcs
 
-def create_stock_optim():
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    pulp_result_file = os.path.join(project_root, "models/models_result/pulp_result_data.pkl")
-    optim_df = pd.read_pickle(pulp_result_file)
+def create_stock_optim(optim_df=None):
+    if optim_df is None:
+        blob_name = 'models/pulp_result/pulp_result_data.csv'
+        pulp_result_file = download_from_gcs(blob_name)
+        optim_df = pd.read_csv(pulp_result_file)
 
     return html.Div([
         html.H3(

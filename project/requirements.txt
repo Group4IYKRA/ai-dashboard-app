@@ -1,1 +1,4 @@
 # Python dependencies
+google-cloud-storage
+google-cloud-bigquery
+google-cloud-bigquery-storage

@@ -2,15 +2,21 @@
 import pandas as pd
 from pulp import *
 import os
+from project import download_from_gcs, upload_to_gcs
+import gc
 
 def pulp_solver():
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pulp_blob = 'query_result/pulp_raw_data.csv'
+    cost_blob = 'query_result/cost_table_data.csv'
+
+    pulp_file = download_from_gcs(pulp_blob)
+    cost_file = download_from_gcs(cost_blob)
 
     # Get the pulp_raw_data from data/query_result for pulp model
-    pulp_raw_df = pd.read_pickle(f"{project_root}/data/query_result/pulp_raw_data.pkl")
+    pulp_raw_df = pd.read_csv(pulp_file)
 
     # Get the cost_table_data from data/query_result for pulp model
-    cost_df = pd.read_pickle(f"{project_root}/data/query_result/cost_table_data.pkl")
+    cost_df = pd.read_csv(cost_file)
 
     # Initialize Model
     stock_optim_model = LpProblem("Minimize_Transportation_Cost", LpMinimize)
@@ -94,4 +100,7 @@ def pulp_solver():
     optim_df = optim_df[["From", "To", "Product_ID", "Forecasted_Demand", "trfQty"]]
     optim_df.rename(columns={"Forecasted_Demand":"Demand"}, inplace=True)
 
-    return optim_df
+    blob_name = 'models/pulp_result/pulp_result_data.csv'
+    upload_to_gcs(optim_df, blob_name)
+
+pulp_solver()
