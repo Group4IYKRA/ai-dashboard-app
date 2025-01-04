@@ -19,7 +19,15 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 def chatbox():
     return html.Div([
         # Area chat dengan scroll
-        html.H1("CHATBOT FOR INVENTORY OPTIMIZATION"),
+        html.Div([
+            html.H1("CHATBOT FOR INVENTORY OPTIMIZATION"),
+        ], style={
+            'backgroundColor': '#007BFF',
+            'border': '1px solid #ddd', 
+            'borderRadius': '10px',
+            'color': 'white',
+            'textAlign': 'center'}
+            ),
         #dcc.Store(id="chat-history", storage_type="session"),
         dcc.Store(id="chat-history", data=[]),
         dcc.Loading(
