@@ -2,3 +2,14 @@
 google-cloud-storage
 google-cloud-bigquery
 google-cloud-bigquery-storage
+dash
+dash-mantine-components==0.12.1
+dash-bootstrap-components
+pandas
+dash-chart-editor
+openai==0.28
+dash-ag-grid
+redis
+google-cloud-bigquery[pandas] 
+faiss-cpu
+sentence-transformers

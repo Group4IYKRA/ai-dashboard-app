@@ -1,6 +1,7 @@
 # Entry point for the application
 from dash import Dash, html, Input, Output
 from .dashboard import *
+from .chatbot import *
 import os
 
 # Get all necessary dfs from google cloud storage
@@ -13,7 +14,8 @@ metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv
 
 app = Dash()
 
-app.layout = html.Div([
+
+dashboard_layout = html.Div([
     html.Div([
         html.Div([
             html.H1(
@@ -22,6 +24,9 @@ app.layout = html.Div([
                     'textAlign': 'left',
                     'fontFamily': 'Helvetica',
                     'marginBottom': '20px',
+                    'marginleft': '20px',
+                    'color': 'white',
+                    'padding-left': '25px',
                 }
             ),
         ], style={
@@ -44,43 +49,61 @@ app.layout = html.Div([
         'display': 'flex',          
         'alignItems': 'center',  
         'marginBottom': '2px',
-        'width': '100%',  
+        'width': '100%',
+        'backgroundColor': '#007BFF',
+        'border': '1px solid #ddd', 
+        'borderRadius': '10px'  
     }),
     html.Div([
         dcc.Graph(id="stockout-ratio-scorecard", 
-                  figure=create_stockout_scorecard(metrics_raw_data)),
+                figure=create_stockout_scorecard(metrics_raw_data), style={'width': '50%'}),
         dcc.Graph(id="itr-scorecard", 
-                  figure=create_itr_scorecard(metrics_raw_data)),
+                figure=create_itr_scorecard(metrics_raw_data), style={'width': '50%'}),
         dcc.Graph(id="overstock-cost-scorecard", 
-                  figure=create_overstock_cost_scorecard(metrics_raw_data)),
+                figure=create_overstock_cost_scorecard(metrics_raw_data), style={'width': '50%'}),
     ], style={
         'display': 'flex',          
         'alignItems': 'center',  
         'marginBottom': '2px',
-        'width': '100%', 
+        'width': '100%',
+        'justifyContent': 'center',
     }),
     html.Div([
         dcc.Graph(id="stockout-ratio-areachart",
-                  figure=create_stockout_linechart(metrics_raw_data)),
-        dcc.Graph(id="itr-linechart", 
-                  figure=create_itr_linechart(metrics_raw_data)),
+                  figure=create_stockout_linechart(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="itr-linechart",
+                  figure=create_itr_linechart(metrics_raw_data), style={'width': '50%'}),
         dcc.Graph(id="overstock-cost-linechart", 
-                  figure=create_overstock_cost_linechart(metrics_raw_data)),
+                figure=create_overstock_cost_linechart(metrics_raw_data), style={'width': '50%'}),
     ], style={
         'display': 'flex',          
         'alignItems': 'center',  
         'marginBottom': '2px',
-        'width': '100%',         
+        'width': '100%',
+        'justifyContent': 'center',        
     }),
     html.Div([
         create_stock_optim(optim_df),
-        create_table(stock_pivot),
-    ], style={
+        ], style={
         'display': 'flex',          
         'alignItems': 'center',  
         'marginBottom': '2px',
-        'width': '100%', 
-    })
+        'width': '100%',
+        'justifyContent': 'center',
+        }),
+    create_table(stock_pivot),
+    html.Div(chatbox(),style={'display': 'none'}),
+])
+
+# Main app layout
+app.layout = html.Div([
+    html.Div([
+        html.Button("Dashboard", id="dashboard-button", n_clicks=0, 
+                    style={"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
+        html.Button("Chatbot", id="chatbot-button", n_clicks=0, 
+                    style={"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
+    ], style={"float": "left", "marginRight": "20px", 'border': '1px solid #ddd', 'height': '900px', 'width': '120px', 'backgroundColor': '#f9f9f9',  "position": "fixed"}),
+    html.Div(id="page-content", children = dashboard_layout, style={"marginLeft": "150px"}),
 ])
 
 @app.callback(
@@ -159,5 +182,20 @@ def update_charts(selected_product_ids,
         create_overstock_cost_linechart(filtered_metrics),       
     ]
 
+# Callback to switch between pages
+@app.callback(
+    [Output("page-content", "children"),
+     Output("dashboard-button", "style"),
+     Output("chatbot-button", "style")],
+    [Input("dashboard-button", "n_clicks"), Input("chatbot-button", "n_clicks")]
+)
+def render_page_content(dashboard_clicks, chatbot_clicks):
+    default_style = {"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px"}
+    active_style = {"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "backgroundColor": "#007BFF", "color": "white"}
+    if chatbot_clicks > dashboard_clicks:
+        return chatbox(), default_style, active_style
+    else:
+        return dashboard_layout, active_style, default_style 
+    
 if __name__ == "__main__":
     app.run_server(debug=True)
