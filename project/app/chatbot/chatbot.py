@@ -9,12 +9,42 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 from dotenv import load_dotenv
+import random
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
 load_dotenv(env_path)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Menggunakan OpenAI untuk chatbot (menggunakan GPT-3 atau GPT-4)
+# 1. Load and preprocess data
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+chatbot_table_file = os.path.join(project_root, "data/query_result/chatbot_table_data.pkl")
+data = pd.read_pickle(chatbot_table_file)
+
+# Select relevant columns for embedding
+data['combined_text'] = data['Category'] + ' ' + data['Brand'] + ' ' + data['Seasonality']
+
+# 2. Generate embeddings
+model = SentenceTransformer('all-MiniLM-L6-v2')  # Load a pre-trained embedding model
+embeddings = model.encode(data['combined_text'].tolist())
+
+# 3. Initialize FAISS index
+embedding_dim = embeddings.shape[1]
+faiss_index = faiss.IndexFlatL2(embedding_dim)
+#faiss_index.add(np.array(embeddings))
+faiss_index.add(embeddings.astype('float32'))
+
+# 4. Retrieval function
+def retrieve(user_input, top_k=5):
+    """Retrieve the top_k most relevant entries based on the query."""
+    query_embedding = model.encode([user_input])
+    #distances, indices = faiss_index.search(np.array(query_embedding), top_k)
+    distances, indices = faiss_index.search(query_embedding.astype('float32'), top_k)
+    results = data.iloc[indices[0]]
+    return results
 
 def chatbox():
     return html.Div([
@@ -42,7 +72,15 @@ def chatbox():
         ),
 
         # Input text untuk pesan
-        dcc.Input(id='user-input', type='text', placeholder='Write message...', style={
+        dcc.Input(id='user-input', 
+                  type='text', 
+                  placeholder=random.choice([
+                      'what product that i should sell to avoid overstock?',
+                      'what product that i should restock based on current season?',
+                      'produk apa yang saya jual untuk menghindari overstock?',
+                      'produk apa yang harus saya restock berdasarkan musim yang sedang berjalan?'
+                  ]), 
+                  style={
             'width': '80%', 'padding': '10px', 'borderRadius': '5px', 'border': '1px solid #ddd', 'marginRight': '10px'
         }),
 
@@ -54,7 +92,7 @@ def chatbox():
 
 # callback untuk chatbot
 @callback(
-    [Output('chat-box', 'children'), Output('chat-history', 'data')],
+    [Output('chat-box', 'children'), Output('chat-history', 'data'), Output('user-input', 'value'),],
     [Input('send-button', 'n_clicks')],
     [State('user-input', 'value'), State('chat-history', 'data')],
     prevent_initial_call=True
@@ -77,34 +115,8 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
         }
     }
 
-    # Menggunakan OpenAI untuk chatbot (menggunakan GPT-3 atau GPT-4)
-    # 1. Load and preprocess data
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    chatbot_table_file = os.path.join(project_root, "data/query_result/chatbot_table_data.pkl")
-    data = pd.read_pickle(chatbot_table_file)
-
-    # Select relevant columns for embedding
-    data['combined_text'] = data['Category'] + ' ' + data['Brand'] + ' ' + data['Seasonality']
-
-    # 2. Generate embeddings
-    model = SentenceTransformer('all-MiniLM-L6-v2')  # Load a pre-trained embedding model
-    embeddings = model.encode(data['combined_text'].tolist())
-
-    # 3. Initialize FAISS index
-    embedding_dim = embeddings.shape[1]
-    faiss_index = faiss.IndexFlatL2(embedding_dim)
-    faiss_index.add(np.array(embeddings))
-
-    # 4. Retrieval function
-    def retrieve(user_input, top_k=5):
-        """Retrieve the top_k most relevant entries based on the query."""
-        query_embedding = model.encode([user_input])
-        distances, indices = faiss_index.search(np.array(query_embedding), top_k)
-        results = data.iloc[indices[0]]
-        return results
-
-    df = retrieve(user_input, top_k=3)
+    df = retrieve(user_input, top_k=5)
+    conversation_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
 
     # Generate insights
     insights = []
@@ -125,19 +137,6 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
     for col in df.columns:
         insights.append(f"- Column '{col}' has {df[col].nunique()} unique values.")
 
-    # Missing Values
-    missing_values = df.isnull().sum()
-    insights.append("\nMissing Values:")
-    for col, count in missing_values.items():
-        if count > 0:
-            insights.append(f"- Column '{col}' has {count} missing values.")
-
-    # Most Common Values in Categorical Columns
-    categorical_columns = df.select_dtypes(include=["object"]).columns
-    for col in categorical_columns:
-        top_value = df[col].mode().iloc[0]
-        insights.append(f"\nMost common value in '{col}' column: {top_value}")
-
     insights_text = "\n".join(insights)
 
     prompt = (
@@ -151,13 +150,20 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
         "5.Storage Space Management: Provide suggestions on how to optimize storage space usage based on inventory data."
         "6.Cost Analysis: Identify high-cost products that are not moving or selling well, and suggest ways to reduce storage costs or find alternative suppliers."
         "Provide data-driven insights to improve inventory management, making it more efficient and cost-effective. Ensure that the recommendations align with the goal of optimization and cost savings for the company."
+        "The user should be invited to ask another question at the end of the response. You can also respond based on the conversation history. You can also answer in Indonesian, depending on the user's question"
+        #"You can also answer in Indonesian, depending on the user's question. The user should be invited to ask another question at the end of the response"
         #"In addition to the insights, generate visualizations that help better understand and communicate the data."
     )
+    messages = [{"role": "system", "content": f"{prompt}\n\nContext:\n\n{insights_text}\n\nconversation history: {conversation_history}"}]
+    messages.append({"role": "user", "content": user_input})  # Tambahkan pertanyaan baru
+
     prompt = f"{prompt}\n\nContext:\n\n{insights_text}"
     prompt = f"""{prompt}\n\nUser's Question: {user_input}"""
+    prompt = f"{prompt}\n\nconversation history: {conversation_history}"
 
     response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}]
+    model="gpt-3.5-turbo", messages=messages
+    #model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}]
     )
     bot_response = response.choices[0].message.content  # Mengembalikan respons dari chatbot
     bot_message = {
@@ -177,4 +183,4 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
         for message in chat_history
     ]
 
-    return chat_elements, chat_history
+    return chat_elements, chat_history, ""
