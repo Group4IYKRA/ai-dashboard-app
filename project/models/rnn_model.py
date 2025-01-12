@@ -1,1 +1,0 @@
-# RNN model code

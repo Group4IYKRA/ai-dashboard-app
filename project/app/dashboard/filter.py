@@ -1,7 +1,6 @@
 # Utility functions for the dashboard
 from dash import dcc
 import pandas as pd
-from project import download_from_gcs
 
 def product_filter(stock_pivot):
     return dcc.Dropdown(

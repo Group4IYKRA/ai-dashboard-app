@@ -1,0 +1,14 @@
+# Ignore .git directory (Git version control)
+.git/
+
+# Ignore node_modules (if you're using Node.js or any large dependencies)
+node_modules/
+
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore any other directories or files that are large or unnecessary
+*.log
+*.tmp
