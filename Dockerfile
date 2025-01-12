@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     build-essential \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir -r /project/requirements.txt
+    && pip install --no-cache-dir -r project/requirements.txt
 
 ENV DEBIAN_FRONTEND=dialog
 

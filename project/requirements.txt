@@ -16,7 +16,6 @@ sentence_transformers==3.3.1
 utilsforecast==0.2.10
 dash-mantine-components==0.12.1
 google-cloud
-google-cloud-storage
 google-cloud-bigquery
 google-cloud-bigquery-storage
 google-cloud-bigquery[pandas]
