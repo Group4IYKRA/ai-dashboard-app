@@ -29,9 +29,9 @@ steps:
     - |
       kubectl apply -f kubernetes/services.yaml
       kubectl apply -f kubernetes/deployment.yaml
-      kubectl apply -f kubernetes/hourly-cronjob.yaml
-      kubectl apply -f kubernetes/daily-cronjob.yaml
-      kubectl apply -f kubernetes/weekly-cronjob.yaml
+      kubectl apply -f kubernetes/hourly-cron.yaml
+      kubectl apply -f kubernetes/daily-cron.yaml
+      kubectl apply -f kubernetes/weekly-cron.yaml
 
 images:
   - 'gcr.io/b-508911/ai-dashboard-app:latest'
