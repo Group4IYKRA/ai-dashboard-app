@@ -1,6 +1,6 @@
 FROM python:3.12.7-slim
 
-COPY project .
+COPY . .
 
 ENV DEBIAN_FRONTEND=noninteractive
 
