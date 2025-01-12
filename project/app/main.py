@@ -2,18 +2,47 @@
 from dash import Dash, html, Input, Output
 from .dashboard import *
 from .chatbot import *
+from project.data.weekly_pipeline import run_weekly_pipeline
 import os
+import subprocess
+import logging
 
-# Get all necessary dfs from google cloud storage
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
+# Get all necessary dfs
+current_dir = os.getcwd()
 processed_dir = 'project/data/processed/'
+file_path1 = os.path.join(processed_dir, 'pulp_result_data.csv')
+file_path2 = os.path.join(processed_dir, 'stock_pivot_data.csv')
+file_path3 = os.path.join(processed_dir, 'metrics_raw_data.csv')
 
 # Store the original data globally
-stock_pivot = pd.read_csv(os.path.join(processed_dir, 'stock_pivot_data.csv'))
-optim_df = pd.read_csv(os.path.join(processed_dir, 'pulp_result_data.csv'))
-metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv'))
+if all(os.path.exists(file) for file in [file_path1, file_path2, file_path3]):
+    optim_df = pd.read_csv(os.path.join(processed_dir, 'pulp_result_data.csv'))
+    optim_df = optim_df.drop(columns=['Unnamed: 0'])
+    stock_pivot = pd.read_csv(os.path.join(processed_dir, 'stock_pivot_data.csv'))
+    stock_pivot = stock_pivot.drop(columns=['Unnamed: 0'])
+    metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv'))
+    logging.info(f'File Ready! in {file_path1}, current working directory: {current_dir}')
+else:
+    logging.info(f'File not ready in {file_path1}. Please wait while we get the data.')
+    run_weekly_pipeline()
+    logging.info('Successfully running pipeline!')
+    stock_pivot = pd.read_csv(os.path.join(processed_dir, 'stock_pivot_data.csv'))
+    stock_pivot = stock_pivot.drop(columns=['Unnamed: 0'])
+    optim_df = pd.read_csv(os.path.join(processed_dir, 'pulp_result_data.csv'))
+    optim_df = optim_df.drop(columns=['Unnamed: 0'])
+    metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv'))
 
-app = Dash()
-
+app = Dash(__name__)
+server = app.server
 
 dashboard_layout = html.Div([
     html.Div([
@@ -21,68 +50,99 @@ dashboard_layout = html.Div([
             html.H1(
                 "STOCK OPTIMIZATION HUB DASHBOARD", 
                 style={
+                    'position': 'sticky',
+                    'top':'0',
                     'textAlign': 'left',
                     'fontFamily': 'Helvetica',
                     'marginBottom': '20px',
-                    'marginleft': '20px',
+                    'marginLeft': '20px',
                     'color': 'white',
                     'padding-left': '25px',
+                    'zIndex':'1000',
                 }
             ),
         ], style={
             'flex': '1',
-            'width': '39%'
+            'width': '39%',
+            'position': 'sticky',
+            'zIndex':'1000',
         }),
         html.Div([
             product_filter(stock_pivot),
             from_filter(optim_df),
             to_filter(optim_df),
+            html.Div([
+                html.Button('Get new data', id='refresh-button', n_clicks=0),
+                html.Div(id='status-message'),
+            ]),
         ], style={
+            'position': 'sticky',
+            'top': '0',
             'display': 'flex',          
             'alignItems': 'center',     
             'justifyContent': 'space-between',  
             'marginBottom': '2px',
             'width': '59%',
-            'flex': '1'
+            'flex': '1',
+            'zIndex':'1000',
         }),
     ], style={
+        'position':'sticky',
+        'top': '0',
         'display': 'flex',          
         'alignItems': 'center',  
         'marginBottom': '2px',
         'width': '100%',
         'backgroundColor': '#007BFF',
         'border': '1px solid #ddd', 
-        'borderRadius': '10px'  
+        'borderRadius': '10px',
+        'zIndex': '1000',
     }),
     html.Div([
         dcc.Graph(id="stockout-ratio-scorecard", 
                 figure=create_stockout_scorecard(metrics_raw_data), style={'width': '50%'}),
-        dcc.Graph(id="itr-scorecard", 
-                figure=create_itr_scorecard(metrics_raw_data), style={'width': '50%'}),
-        dcc.Graph(id="overstock-cost-scorecard", 
-                figure=create_overstock_cost_scorecard(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="stockout-ratio-linechart", 
+                figure=create_stockout_linechart(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="stockout-ratio-barchart", 
+                figure=create_stockout_barchart(metrics_raw_data), style={'width': '50%'}),
     ], style={
         'display': 'flex',          
-        'alignItems': 'center',  
+        'alignItems': 'flex-start',  
         'marginBottom': '2px',
         'width': '100%',
         'justifyContent': 'center',
     }),
     html.Div([
-        dcc.Graph(id="stockout-ratio-areachart",
-                  figure=create_stockout_linechart(metrics_raw_data), style={'width': '50%'}),
-        dcc.Graph(id="itr-linechart",
-                  figure=create_itr_linechart(metrics_raw_data), style={'width': '50%'}),
-        dcc.Graph(id="overstock-cost-linechart", 
-                figure=create_overstock_cost_linechart(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="itr-scorecard", 
+                figure=create_itr_scorecard(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="itr-linechart", 
+                figure=create_itr_linechart(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="itr-barchart", 
+                figure=create_itr_barchart(metrics_raw_data), style={'width': '50%'}),
     ], style={
         'display': 'flex',          
-        'alignItems': 'center',  
+        'alignItems': 'flex-start',  
         'marginBottom': '2px',
         'width': '100%',
-        'justifyContent': 'center',        
+        'justifyContent': 'center',      
     }),
     html.Div([
+        dcc.Graph(id="overstock-cost-scorecard", 
+                figure=create_overstock_cost_scorecard(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="overstock-cost-linechart", 
+                figure=create_overstock_cost_linechart(metrics_raw_data), style={'width': '50%'}),
+        dcc.Graph(id="overstock-cost-barchart", 
+                figure=create_overstock_cost_barchart(metrics_raw_data), style={'width': '50%'}),
+    ], style={
+        'display': 'flex',          
+        'alignItems': 'flex-start',  
+        'marginBottom': '2px',
+        'width': '100%',
+        'justifyContent': 'center',      
+    }),
+    html.Div([
+        dcc.Graph(id='forecast-vs-actual-linechart',
+                  figure=create_fct_vs_act_linechart(metrics_raw_data), style={'width':'50%'}),
         create_stock_optim(optim_df),
         ], style={
         'display': 'flex',          
@@ -99,9 +159,9 @@ dashboard_layout = html.Div([
 app.layout = html.Div([
     html.Div([
         html.Button("Dashboard", id="dashboard-button", n_clicks=0, 
-                    style={"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
+                    style={"position": "sticky", "display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
         html.Button("Chatbot", id="chatbot-button", n_clicks=0, 
-                    style={"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
+                    style={"position": "sticky", "display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
     ], style={"float": "left", "marginRight": "20px", 'border': '1px solid #ddd', 'height': '900px', 'width': '120px', 'backgroundColor': '#f9f9f9',  "position": "fixed"}),
     html.Div(id="page-content", children = dashboard_layout, style={"marginLeft": "150px"}),
 ])
@@ -146,12 +206,16 @@ def update_tables(selected_product_ids,
     return filtered_pivot.to_dict('records'), filtered_optim.to_dict('records')
 
 @app.callback(
-    Output('stockout-ratio-scorecard', 'figure'),
-    Output('itr-scorecard', 'figure'),
-    Output('overstock-cost-scorecard', 'figure'),
-    Output('stockout-ratio-areachart', 'figure'),
-    Output('itr-linechart', 'figure'),
-    Output('overstock-cost-linechart', 'figure'),
+    Output('stockout-ratio-scorecard', 'figure'), 
+    Output('itr-scorecard', 'figure'), 
+    Output('overstock-cost-scorecard', 'figure'), 
+    Output('stockout-ratio-linechart', 'figure'), 
+    Output('itr-linechart', 'figure'), 
+    Output('overstock-cost-linechart', 'figure'), 
+    Output('stockout-ratio-barchart', 'figure'), 
+    Output('itr-barchart', 'figure'), 
+    Output('overstock-cost-barchart', 'figure'), 
+    Output('forecast-vs-actual-linechart', 'figure'),
     Input('product_filter_dropdown', 'value'),
     Input('from_filter_dropdown', 'value'),
     Input('to_filter_dropdown', 'value')
@@ -179,7 +243,11 @@ def update_charts(selected_product_ids,
         create_overstock_cost_scorecard(filtered_metrics),
         create_stockout_linechart(filtered_metrics),
         create_itr_linechart(filtered_metrics),
-        create_overstock_cost_linechart(filtered_metrics),       
+        create_overstock_cost_linechart(filtered_metrics),
+        create_stockout_barchart(filtered_metrics),
+        create_itr_barchart(filtered_metrics),
+        create_overstock_cost_barchart(filtered_metrics),
+        create_fct_vs_act_linechart(filtered_metrics)       
     ]
 
 # Callback to switch between pages
@@ -196,6 +264,32 @@ def render_page_content(dashboard_clicks, chatbot_clicks):
         return chatbox(), default_style, active_style
     else:
         return dashboard_layout, active_style, default_style 
+
+# Callback to refresh the pages
+@app.callback(
+    Output('status-message', 'children'),
+    Input('refresh-button', 'n_clicks'),
+    prevent_initial_call=True
+)
+def run_script_and_refresh(n_clicks):
+    if n_clicks is None:
+        return ""
+
+    try:
+        # Run the Python script
+        subprocess.run(
+            ["python", "-m", "project.data.hourly_pipeline"], 
+            capture_output=True, text=True, check=True
+        )
+        # Return success message
+        return "Complete! Please refresh page"
     
+    except subprocess.CalledProcessError as e:
+        # Return error message and trigger refresh
+        return f"Error executing script:\n{e.stderr}"
+    except Exception as ex:
+        # Return unexpected error message and trigger refresh
+        return f"Unexpected error: {ex}", 0
+
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=False)

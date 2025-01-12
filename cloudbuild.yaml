@@ -1,0 +1,37 @@
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # Docker Build
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '--no-cache', '-t', 
+           'gcr.io/b-508911/ai-dashboard-app:latest', 
+           '.']
+
+  # Docker Push
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 
+           'gcr.io/b-508911/ai-dashboard-app:latest']
+
+  # Authenticate GKE
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args: 
+    - '-c'
+    - |
+      gcloud container clusters get-credentials ai-dashboard-cluster --zone us-central1 --project b-508911
+
+  # Deploy to Cloud GKE
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args: 
+    - '-c'
+    - |
+      kubectl apply -f kubernetes/services.yaml
+      kubectl apply -f kubernetes/deployment.yaml
+      kubectl apply -f kubernetes/hourly-cronjob.yaml
+      kubectl apply -f kubernetes/daily-cronjob.yaml
+      kubectl apply -f kubernetes/weekly-cronjob.yaml
+
+images:
+  - 'gcr.io/b-508911/ai-dashboard-app:latest'

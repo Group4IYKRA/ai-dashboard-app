@@ -1,10 +1,10 @@
 import dash
 from dash import dcc, html, Input, Output, callback, State
+import pandas as pd
 import plotly.express as px
 from dash.dependencies import Input, Output
 import openai
 import os
-import pandas as pd
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
