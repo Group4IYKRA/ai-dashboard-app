@@ -48,10 +48,3 @@ spec:
         env:
         - name: PYTHONUNBUFFERED
           value: "1"
-        volumeMounts:
-        - mountPath: "/data"
-          name: app-data
-      volumes:
-      - name: app-data
-        persistentVolumeClaim:
-          claimName: app-pvc
