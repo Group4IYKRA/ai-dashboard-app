@@ -16,9 +16,22 @@ steps:
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
-    args: ['run', 'deploy', 'ai-dashboard-app-run', '--image', 'gcr.io/b-508911/ai-dashboard-app:latest',
-           '--region', 'us-central1', '--platform', 'managed', '--allow-unauthenticated']
-  
+    args:
+      - 'run'
+      - 'deploy'
+      - 'ai-dashboard-app-run'
+      - '--image'
+      - 'gcr.io/b-508911/ai-dashboard-app:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--verbosity'
+      - 'debug'
+      - '--project'
+      - 'b-508911'
+    
   # Edit Cloud Run service to mount volume
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
@@ -31,7 +44,7 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
-      'scheduler', 'jobs', 'create', 'http', 'my-scheduled-job',
+      'scheduler', 'jobs', 'create', 'http', 'weekly-job',
       '--schedule', '0 2 * * 0',
       '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-weekly-pipeline',
       '--http-method', 'GET'
@@ -41,7 +54,7 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
-      'scheduler', 'jobs', 'create', 'http', 'my-scheduled-job',
+      'scheduler', 'jobs', 'create', 'http', 'daily-job',
       '--schedule', '15 1 * * *',
       '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-daily-pipeline',
       '--http-method', 'GET'
@@ -51,7 +64,7 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
-      'scheduler', 'jobs', 'create', 'http', 'my-scheduled-job',
+      'scheduler', 'jobs', 'create', 'http', 'hourly-job',
       '--schedule', '0 * * * *',
       '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-hourly-pipeline',
       '--http-method', 'GET'
