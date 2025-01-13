@@ -13,12 +13,19 @@ steps:
     args: ['push', 
            'gcr.io/b-508911/ai-dashboard-app:latest']
 
-  # Deploy to Cloud Run with volume mount
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: ['run', 'deploy', 'ai-dashboard-app-run', '--image', 'gcr.io/b-508911/ai-dashboard-app:latest',
-           '--region', 'us-central1', '--platform', 'managed', '--allow-unauthenticated',
-           '--mount', 'type=gcs,source=bucket-capstone-iykra0,destination=/ai-dashboard-app-run']
+           '--region', 'us-central1', '--platform', 'managed', '--allow-unauthenticated']
+  
+  # Edit Cloud Run service to mount volume
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: ['beta', 'run', 'services', 'update', 'ai-dashboard-app-run',
+           '--execution-environment', 'gen2',
+           '--add-volume', 'name=gcs1,type=cloud-storage,bucket=bucket-capstone-iykra0',
+           '--add-volume-mount', 'volume=gcs1,mount-path=/ai-dashboard-app-run']
 
   # Create or update Cloud Scheduler job for Weekly Update
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
