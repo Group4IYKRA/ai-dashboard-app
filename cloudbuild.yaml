@@ -40,7 +40,8 @@ steps:
     args: ['beta', 'run', 'services', 'update', 'ai-dashboard-app-run',
            '--execution-environment', 'gen2',
            '--add-volume', 'name=gcs1,type=cloud-storage,bucket=bucket-capstone-iykra0',
-           '--add-volume-mount', 'volume=gcs1,mount-path=/ai-dashboard-app-run']
+           '--add-volume-mount', 'volume=gcs1,mount-path=/ai-dashboard-app-run',
+           '--region', 'us-central1']
 
   # Create or update Cloud Scheduler job for Weekly Update
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
