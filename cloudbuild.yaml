@@ -31,6 +31,8 @@ steps:
       - 'debug'
       - '--project'
       - 'b-508911'
+      - '--port'
+      - '8050'
     
   # Edit Cloud Run service to mount volume
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
