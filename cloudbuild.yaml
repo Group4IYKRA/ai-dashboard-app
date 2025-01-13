@@ -13,25 +13,42 @@ steps:
     args: ['push', 
            'gcr.io/b-508911/ai-dashboard-app:latest']
 
-  # Authenticate GKE
+  # Deploy to Cloud Run with volume mount
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args: 
-    - '-c'
-    - |
-      gcloud container clusters get-credentials ai-dashboard-cluster --zone us-central1-a --project b-508911
+    entrypoint: gcloud
+    args: ['run', 'deploy', 'ai-dashboard-app-run', '--image', 'gcr.io/b-508911/ai-dashboard-app:latest',
+           '--region', 'us-central1', '--platform', 'managed', '--allow-unauthenticated',
+           '--mount', 'type=gcs,source=bucket-capstone-iykra0,destination=/ai-dashboard-app-run']
 
-  # Deploy to Cloud GKE
+  # Create or update Cloud Scheduler job for Weekly Update
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args: 
-    - '-c'
-    - |
-      kubectl apply -f kubernetes/services.yaml
-      kubectl apply -f kubernetes/deployment.yaml
-      kubectl apply -f kubernetes/hourly-cron.yaml
-      kubectl apply -f kubernetes/daily-cron.yaml
-      kubectl apply -f kubernetes/weekly-cron.yaml
+    entrypoint: gcloud
+    args: [
+      'scheduler', 'jobs', 'create', 'http', 'my-scheduled-job',
+      '--schedule', '0 2 * * 0',
+      '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-weekly-pipeline',
+      '--http-method', 'GET'
+    ]
+
+  # Create or update Cloud Scheduler job for Daily Update
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'scheduler', 'jobs', 'create', 'http', 'my-scheduled-job',
+      '--schedule', '15 1 * * *',
+      '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-daily-pipeline',
+      '--http-method', 'GET'
+    ]
+
+  # Create or update Cloud Scheduler job for Hourly Update
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'scheduler', 'jobs', 'create', 'http', 'my-scheduled-job',
+      '--schedule', '0 * * * *',
+      '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-hourly-pipeline',
+      '--http-method', 'GET'
+    ]
 
 images:
   - 'gcr.io/b-508911/ai-dashboard-app:latest'
