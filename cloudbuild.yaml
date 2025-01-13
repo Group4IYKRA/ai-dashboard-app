@@ -19,7 +19,7 @@ steps:
     args: 
     - '-c'
     - |
-      gcloud container clusters get-credentials ai-dashboard-cluster --zone us-central1 --project b-508911
+      gcloud container clusters get-credentials ai-dashboard-cluster --zone us-central1-a --project b-508911
 
   # Deploy to Cloud GKE
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -32,7 +32,6 @@ steps:
       kubectl apply -f kubernetes/hourly-cron.yaml
       kubectl apply -f kubernetes/daily-cron.yaml
       kubectl apply -f kubernetes/weekly-cron.yaml
-      kubectl apply -f kubernetes/pvc.yaml
 
 images:
   - 'gcr.io/b-508911/ai-dashboard-app:latest'
