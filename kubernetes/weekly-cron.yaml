@@ -11,7 +11,7 @@ spec:
         spec:
           containers:
           - name: python-weekly
-            image: ai-dashboard-app:latest
+            image: gcr.io/b-508911/ai-dashboard-app:latest
             command:
               - "python"
               - "-m"
