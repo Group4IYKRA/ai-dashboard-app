@@ -1,5 +1,6 @@
 # Entry point for the application
 from dash import Dash, html, Input, Output
+from flask import jsonify
 from .dashboard import *
 from .chatbot import *
 from project.data.query import *
@@ -293,24 +294,56 @@ def run_script_and_refresh(n_clicks):
         # Return unexpected error message and trigger refresh
         return f"Unexpected error: {ex}", 0
 
-@server.route('/health')
-def health_check():
-    """
-    Health check endpoint that Kubernetes will use to monitor the application.
-    Returns:
-        JSON response indicating the service is healthy and includes basic stats
-    """
+@server.route('/run-weekly-pipeline', methods=['GET'])
+def run_weekly_pipeline():
     try:
-        return jsonify({
-            'status': 'healthy',
-            'service': 'ai-dashboard',
-            'timestamp': datetime.datetime.utcnow().isoformat()
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e)
-        }), 500
+        # Run the background task using subprocess
+        subprocess.run(
+            ["python", "-m", "project.data.weekly_pipeline"], 
+            capture_output=True, text=True, check=True
+        )
+        # Return success response
+        return jsonify({"status": "success", "message": "Weekly pipeline executed successfully."}), 200
+    except subprocess.CalledProcessError as e:
+        # Return error message
+        return jsonify({"status": "error", "message": f"Error executing script: {e.stderr}"}), 500
+    except Exception as ex:
+        # Return unexpected error message
+        return jsonify({"status": "error", "message": f"Unexpected error: {str(ex)}"}), 500
+
+@server.route('/run-daily-pipeline', methods=['GET'])
+def run_daily_pipeline():
+    try:
+        # Run the background task using subprocess
+        subprocess.run(
+            ["python", "-m", "project.data.weekly_pipeline"], 
+            capture_output=True, text=True, check=True
+        )
+        # Return success response
+        return jsonify({"status": "success", "message": "Daily pipeline executed successfully."}), 200
+    except subprocess.CalledProcessError as e:
+        # Return error message
+        return jsonify({"status": "error", "message": f"Error executing script: {e.stderr}"}), 500
+    except Exception as ex:
+        # Return unexpected error message
+        return jsonify({"status": "error", "message": f"Unexpected error: {str(ex)}"}), 500
+
+@server.route('/run-hourly-pipeline', methods=['GET'])
+def run_hourly_pipeline():
+    try:
+        # Run the background task using subprocess
+        subprocess.run(
+            ["python", "-m", "project.data.hourly_pipeline"], 
+            capture_output=True, text=True, check=True
+        )
+        # Return success response
+        return jsonify({"status": "success", "message": "Hourly pipeline executed successfully."}), 200
+    except subprocess.CalledProcessError as e:
+        # Return error message
+        return jsonify({"status": "error", "message": f"Error executing script: {e.stderr}"}), 500
+    except Exception as ex:
+        # Return unexpected error message
+        return jsonify({"status": "error", "message": f"Unexpected error: {str(ex)}"}), 500
 
 if __name__ == "__main__":
     app.run_server(debug=False)
