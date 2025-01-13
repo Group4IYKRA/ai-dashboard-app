@@ -64,7 +64,7 @@ def get_cost_table():
     SELECT * FROM `{cost_table_path}`
     """
     df = client.query(cost_table_query).result().to_dataframe()
-    df.to_csv('project/data/query_result/cost_table_data.csv')
+    upload_to_gcs(df, 'query_result/cost_table_data.csv')
     logging.info('Get cost_table: success!')
 
 # Query the raw data for pulp
@@ -85,7 +85,7 @@ def get_pulp_raw():
     WHERE Date = (SELECT MAX(Date) FROM `{test_table_path}`)
     """
     df = client.query(pulp_raw_query).result().to_dataframe()
-    df.to_csv('project/data/query_result/pulp_raw_data.csv')
+    upload_to_gcs(df, 'query_result/pulp_raw_data.csv')
     logging.info('Get pulp_raw_data: success!')
 
 def get_metrics_raw():

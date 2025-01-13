@@ -32,6 +32,7 @@ steps:
       kubectl apply -f kubernetes/hourly-cron.yaml
       kubectl apply -f kubernetes/daily-cron.yaml
       kubectl apply -f kubernetes/weekly-cron.yaml
+      kubectl apply -f kubernetes/pvc.yaml
 
 images:
   - 'gcr.io/b-508911/ai-dashboard-app:latest'

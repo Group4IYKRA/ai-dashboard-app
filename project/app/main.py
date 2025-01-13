@@ -2,7 +2,8 @@
 from dash import Dash, html, Input, Output
 from .dashboard import *
 from .chatbot import *
-from project.data.weekly_pipeline import run_weekly_pipeline
+from project.data.query import *
+from project.models.pulp_solver import pulp_solver
 import os
 import subprocess
 import logging
@@ -19,27 +20,28 @@ logging.basicConfig(
 # Get all necessary dfs
 current_dir = os.getcwd()
 processed_dir = 'project/data/processed/'
-file_path1 = os.path.join(processed_dir, 'pulp_result_data.csv')
-file_path2 = os.path.join(processed_dir, 'stock_pivot_data.csv')
+file_path1 = os.path.join(processed_dir, 'stock_pivot_data.csv')
+file_path2 = os.path.join(processed_dir, 'pulp_result_data.csv')
 file_path3 = os.path.join(processed_dir, 'metrics_raw_data.csv')
 
 # Store the original data globally
-if all(os.path.exists(file) for file in [file_path1, file_path2, file_path3]):
-    optim_df = pd.read_csv(os.path.join(processed_dir, 'pulp_result_data.csv'))
-    optim_df = optim_df.drop(columns=['Unnamed: 0'])
-    stock_pivot = pd.read_csv(os.path.join(processed_dir, 'stock_pivot_data.csv'))
-    stock_pivot = stock_pivot.drop(columns=['Unnamed: 0'])
-    metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv'))
-    logging.info(f'File Ready! in {file_path1}, current working directory: {current_dir}')
-else:
-    logging.info(f'File not ready in {file_path1}. Please wait while we get the data.')
-    run_weekly_pipeline()
-    logging.info('Successfully running pipeline!')
-    stock_pivot = pd.read_csv(os.path.join(processed_dir, 'stock_pivot_data.csv'))
-    stock_pivot = stock_pivot.drop(columns=['Unnamed: 0'])
-    optim_df = pd.read_csv(os.path.join(processed_dir, 'pulp_result_data.csv'))
-    optim_df = optim_df.drop(columns=['Unnamed: 0'])
-    metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv'))
+if not os.path.exists(file_path1):
+    get_stock_pivot_table()
+
+if not os.path.exists(file_path2):
+    get_pulp_raw()
+    get_cost_table()  
+    pulp_solver()
+
+if not os.path.exists(file_path3):
+    get_metrics_raw()
+
+optim_df = pd.read_csv(os.path.join(processed_dir, 'pulp_result_data.csv'))
+optim_df = optim_df.drop(columns=['Unnamed: 0'])
+stock_pivot = pd.read_csv(os.path.join(processed_dir, 'stock_pivot_data.csv'))
+stock_pivot = stock_pivot.drop(columns=['Unnamed: 0'])
+metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv'))
+logging.info(f'File Ready! in {processed_dir}, current working directory: {current_dir}')
 
 app = Dash(__name__)
 server = app.server
@@ -290,6 +292,25 @@ def run_script_and_refresh(n_clicks):
     except Exception as ex:
         # Return unexpected error message and trigger refresh
         return f"Unexpected error: {ex}", 0
+
+@server.route('/health')
+def health_check():
+    """
+    Health check endpoint that Kubernetes will use to monitor the application.
+    Returns:
+        JSON response indicating the service is healthy and includes basic stats
+    """
+    try:
+        return jsonify({
+            'status': 'healthy',
+            'service': 'ai-dashboard',
+            'timestamp': datetime.datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)
+        }), 500
 
 if __name__ == "__main__":
     app.run_server(debug=False)
