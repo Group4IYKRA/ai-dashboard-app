@@ -50,6 +50,7 @@ steps:
       'scheduler', 'jobs', 'create', 'http', 'weekly-job',
       '--schedule', '0 2 * * 0',
       '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-weekly-pipeline',
+      '--location', 'us-central1',
       '--http-method', 'GET'
     ]
 
@@ -60,6 +61,7 @@ steps:
       'scheduler', 'jobs', 'create', 'http', 'daily-job',
       '--schedule', '15 1 * * *',
       '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-daily-pipeline',
+      '--location', 'us-central1',
       '--http-method', 'GET'
     ]
 
@@ -69,6 +71,7 @@ steps:
     args: [
       'scheduler', 'jobs', 'create', 'http', 'hourly-job',
       '--schedule', '0 * * * *',
+      '--location', 'us-central1',
       '--uri', 'https://ai-dashboard-app-run-791022737244.us-central1.run.app/run-hourly-pipeline',
       '--http-method', 'GET'
     ]
