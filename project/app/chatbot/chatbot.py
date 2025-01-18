@@ -8,14 +8,11 @@ import os
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-from dotenv import load_dotenv
 import random
+from project.config import open_ai_key
 
 # Load environment variables
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
-load_dotenv(env_path)
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = open_ai_key
 
 # Menggunakan OpenAI untuk chatbot (menggunakan GPT-3 atau GPT-4)
 # 1. Load and preprocess data
