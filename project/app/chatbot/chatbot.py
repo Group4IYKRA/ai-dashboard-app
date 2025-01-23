@@ -159,7 +159,7 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
     prompt = f"{prompt}\n\nconversation history: {conversation_history}"
 
     response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", messages=messages
+    model="gpt-4o", messages=messages
     #model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}]
     )
     bot_response = response.choices[0].message.content  # Mengembalikan respons dari chatbot
