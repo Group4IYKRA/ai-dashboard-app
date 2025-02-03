@@ -1,21 +1,18 @@
 import dash
 from dash import dcc, html, Input, Output, callback, State
+import pandas as pd
 import plotly.express as px
 from dash.dependencies import Input, Output
 import openai
 import os
-import pandas as pd
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-from dotenv import load_dotenv
 import random
+from project.config import open_ai_key
 
 # Load environment variables
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
-load_dotenv(env_path)
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = open_ai_key
 
 # Menggunakan OpenAI untuk chatbot (menggunakan GPT-3 atau GPT-4)
 # 1. Load and preprocess data
@@ -50,7 +47,7 @@ def chatbox():
     return html.Div([
         # Area chat dengan scroll
         html.Div([
-            html.H1("CHATBOT FOR INVENTORY OPTIMIZATION"),
+            html.H2("Chatbot"),
         ], style={
             'backgroundColor': '#007BFF',
             'border': '1px solid #ddd', 
@@ -65,7 +62,7 @@ def chatbox():
             type='circle',
             children=[
                 html.Div(id='chat-box', style={
-                    'height': '650px', 'overflowY': 'scroll', 'border': '1px solid #ddd', 'padding': '10px', 'borderRadius': '10px',
+                    'height': '250px', 'overflowY': 'scroll', 'border': '1px solid #ddd', 'padding': '10px', 'borderRadius': '10px',
                     'backgroundColor': '#f9f9f9', 'marginBottom': '20px'
                 })
             ]
@@ -81,14 +78,15 @@ def chatbox():
                       'produk apa yang harus saya restock berdasarkan musim yang sedang berjalan?'
                   ]), 
                   style={
-            'width': '80%', 'padding': '10px', 'borderRadius': '5px', 'border': '1px solid #ddd', 'marginRight': '10px'
+            'width' : '95%', 'padding': '10px', 'borderRadius': '5px', 'border': '1px solid #ddd'
         }),
 
         # Tombol kirim pesan
         html.Button('Send', id='send-button', n_clicks=0, style={
             'padding': '10px 20px', 'backgroundColor': '#007bff', 'border': 'none', 'color': 'white', 'borderRadius': '5px'
         }),
-    ], style={'width': '1200px', 'margin': '0 auto', 'padding': '10px', 'border': '1px solid #ddd', 'borderRadius': '10px', 'fontFamily': 'Helvetica', 'marginTop': '10px'})
+    ], style={'width': '400px', 'margin': '0 auto', 'padding': '10px', 'border': '1px solid #ddd', 'borderRadius': '10px', 'fontFamily': 'Helvetica', 'marginTop': '10px',
+              "boxShadow": "0px 4px 6px rgba(0,0,0,0.1)", 'backgroundColor': '#f9f9f9'})
 
 # callback untuk chatbot
 @callback(
@@ -111,7 +109,7 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
         "content": user_input,
         "style":{
             'backgroundColor': '#007bff', 'color': 'white', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
-            'alignSelf': 'flex-end', 'maxWidth': '80%', 'margin-left': 'auto', 'fontFamily': 'Helvetica', 'width' : 'fit-content', 'margin-right': '20px'
+            'alignSelf': 'flex-end', 'maxWidth': '80%', 'margin-left': 'auto', 'fontFamily': 'Helvetica', 'width' : 'fit-content', 'margin-right': '5px'
         }
     }
 
@@ -162,7 +160,7 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
     prompt = f"{prompt}\n\nconversation history: {conversation_history}"
 
     response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", messages=messages
+    model="gpt-4o", messages=messages
     #model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}]
     )
     bot_response = response.choices[0].message.content  # Mengembalikan respons dari chatbot
@@ -171,7 +169,7 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
         "content": bot_response,
         "style":{
             'backgroundColor': '#f1f1f1', 'color': 'black', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
-            'alignSelf': 'flex-start', 'maxWidth': '80%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Helvetica', 'textAlign': 'left', 'margin-left': '20px'
+            'alignSelf': 'flex-start', 'maxWidth': '80%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Helvetica', 'textAlign': 'left', 'margin-left': '5px'
         }
     }
     # Perbarui chat_history
