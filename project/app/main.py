@@ -47,6 +47,7 @@ logging.info(f'File Ready! in {processed_dir}, current working directory: {curre
 app = Dash(__name__)
 server = app.server
 
+
 #dashboard_layout = html.Div([
 app.layout = html.Div([
     html.Div([
@@ -145,7 +146,7 @@ app.layout = html.Div([
         'marginBottom': '2px',
         'width': '100%',
         'justifyContent': 'space-evenly',
-        'margin': 'auto'      
+        'margin': 'auto'           
     }),
     html.Div([
         dcc.Graph(id='forecast-vs-actual-linechart',
