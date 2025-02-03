@@ -47,7 +47,9 @@ logging.info(f'File Ready! in {processed_dir}, current working directory: {curre
 app = Dash(__name__)
 server = app.server
 
-dashboard_layout = html.Div([
+
+#dashboard_layout = html.Div([
+app.layout = html.Div([
     html.Div([
         html.Div([
             html.H1(
@@ -75,7 +77,7 @@ dashboard_layout = html.Div([
             from_filter(optim_df),
             to_filter(optim_df),
             html.Div([
-                html.Button('Get new data', id='refresh-button', n_clicks=0),
+                html.Button('Get new data', id='refresh-button', n_clicks=0, style={'margin' : '10px'}),
                 html.Div(id='status-message'),
             ]),
         ], style={
@@ -103,45 +105,48 @@ dashboard_layout = html.Div([
     }),
     html.Div([
         dcc.Graph(id="stockout-ratio-scorecard", 
-                figure=create_stockout_scorecard(metrics_raw_data), style={'width': '50%'}),
+                figure=create_stockout_scorecard(metrics_raw_data)),
         dcc.Graph(id="stockout-ratio-linechart", 
-                figure=create_stockout_linechart(metrics_raw_data), style={'width': '50%'}),
+                figure=create_stockout_linechart(metrics_raw_data)),
         dcc.Graph(id="stockout-ratio-barchart", 
-                figure=create_stockout_barchart(metrics_raw_data), style={'width': '50%'}),
+                figure=create_stockout_barchart(metrics_raw_data)),
     ], style={
         'display': 'flex',          
-        'alignItems': 'flex-start',  
+        'alignItems': 'center',
         'marginBottom': '2px',
         'width': '100%',
-        'justifyContent': 'center',
+        'justifyContent': 'space-evenly',
+        'margin': 'auto'
     }),
     html.Div([
         dcc.Graph(id="itr-scorecard", 
-                figure=create_itr_scorecard(metrics_raw_data), style={'width': '50%'}),
+                figure=create_itr_scorecard(metrics_raw_data)),
         dcc.Graph(id="itr-linechart", 
-                figure=create_itr_linechart(metrics_raw_data), style={'width': '50%'}),
+                figure=create_itr_linechart(metrics_raw_data)),
         dcc.Graph(id="itr-barchart", 
-                figure=create_itr_barchart(metrics_raw_data), style={'width': '50%'}),
+                figure=create_itr_barchart(metrics_raw_data)),
     ], style={
         'display': 'flex',          
-        'alignItems': 'flex-start',  
+        'alignItems': 'center',  
         'marginBottom': '2px',
         'width': '100%',
-        'justifyContent': 'center',      
+        'justifyContent': 'space-evenly',
+        'margin': 'auto'      
     }),
     html.Div([
         dcc.Graph(id="overstock-cost-scorecard", 
-                figure=create_overstock_cost_scorecard(metrics_raw_data), style={'width': '50%'}),
+                figure=create_overstock_cost_scorecard(metrics_raw_data)),
         dcc.Graph(id="overstock-cost-linechart", 
-                figure=create_overstock_cost_linechart(metrics_raw_data), style={'width': '50%'}),
+                figure=create_overstock_cost_linechart(metrics_raw_data)),
         dcc.Graph(id="overstock-cost-barchart", 
-                figure=create_overstock_cost_barchart(metrics_raw_data), style={'width': '50%'}),
+                figure=create_overstock_cost_barchart(metrics_raw_data)),
     ], style={
         'display': 'flex',          
-        'alignItems': 'flex-start',  
+        'alignItems': 'center',  
         'marginBottom': '2px',
         'width': '100%',
-        'justifyContent': 'center',      
+        'justifyContent': 'space-evenly',
+        'margin': 'auto'           
     }),
     html.Div([
         dcc.Graph(id='forecast-vs-actual-linechart',
@@ -155,18 +160,14 @@ dashboard_layout = html.Div([
         'justifyContent': 'center',
         }),
     create_table(stock_pivot),
-    html.Div(chatbox(),style={'display': 'none'}),
-])
-
-# Main app layout
-app.layout = html.Div([
     html.Div([
-        html.Button("Dashboard", id="dashboard-button", n_clicks=0, 
-                    style={"position": "sticky", "display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
-        html.Button("Chatbot", id="chatbot-button", n_clicks=0, 
-                    style={"position": "sticky", "display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "align": "center"}),
-    ], style={"float": "left", "marginRight": "20px", 'border': '1px solid #ddd', 'height': '900px', 'width': '120px', 'backgroundColor': '#f9f9f9',  "position": "fixed"}),
-    html.Div(id="page-content", children = dashboard_layout, style={"marginLeft": "150px"}),
+    # Tombol untuk membuka/meminimalkan chatbot
+        html.Div(
+            html.Button("💬 Chat", id="toggle-chat", style={"borderRadius": "50%", "width": "60px", "height": "60px", "backgroundColor": "#007BFF", "color": "white"}),
+            style={"position": "fixed", "bottom": "20px", "right": "20px", "zIndex": "1000"}
+        ),
+        html.Div(id="chat-window", children = chatbox(),style={'display': 'none',"bottom": "90px", "right": "20px", "position": "fixed", "zIndex": "1000"}),
+    ])
 ])
 
 @app.callback(
@@ -253,20 +254,18 @@ def update_charts(selected_product_ids,
         create_fct_vs_act_linechart(filtered_metrics)       
     ]
 
-# Callback to switch between pages
+# Callback to show chatbot window
+# Callback untuk menampilkan/menyembunyikan chatbot
 @app.callback(
-    [Output("page-content", "children"),
-     Output("dashboard-button", "style"),
-     Output("chatbot-button", "style")],
-    [Input("dashboard-button", "n_clicks"), Input("chatbot-button", "n_clicks")]
+    Output("chat-window", "style"),
+    Input("toggle-chat", "n_clicks"),
+    State("chat-window", "style"),
+    prevent_initial_call=True
 )
-def render_page_content(dashboard_clicks, chatbot_clicks):
-    default_style = {"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px"}
-    active_style = {"display": "block", "marginBottom": "10px", "marginLeft": "10px", "width": "100px", "backgroundColor": "#007BFF", "color": "white"}
-    if chatbot_clicks > dashboard_clicks:
-        return chatbox(), default_style, active_style
-    else:
-        return dashboard_layout, active_style, default_style 
+def toggle_chat(n_clicks, current_style):
+    if current_style["display"] == "none":
+        return {**current_style, "display": "block"}
+    return {**current_style, "display": "none"}
 
 # Callback to refresh the pages
 @app.callback(
