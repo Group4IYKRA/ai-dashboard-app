@@ -8,6 +8,7 @@ from project.models.pulp_solver import pulp_solver
 import os
 import subprocess
 import logging
+from flask_socketio import SocketIO
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +47,7 @@ logging.info(f'File Ready! in {processed_dir}, current working directory: {curre
 
 app = Dash(__name__)
 server = app.server
+socketio = SocketIO(app.server)
 
 
 #dashboard_layout = html.Div([
@@ -343,6 +345,14 @@ def run_hourly_pipeline():
     except Exception as ex:
         # Return unexpected error message
         return jsonify({"status": "error", "message": f"Unexpected error: {str(ex)}"}), 500
+
+@socketio.on("connect")
+def on_connect():
+    print("Client connected")
+
+@socketio.on("disconnect")
+def on_disconnect():
+    print("Client disconnected")
 
 if __name__ == "__main__":
     app.run_server(debug=False)
