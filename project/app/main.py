@@ -41,6 +41,7 @@ metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv
 app = Dash(__name__, external_stylesheets=[dbc.themes.LUMEN, "/assets/styles2.css"])
 server = app.server
 cache = Cache(app.server, config={'CACHE_TYPE': 'simple'})
+socketio = SocketIO(app.server)
 
 # Preprocessing for Overstock Cost
 @cache.memoize(timeout=600)
@@ -734,6 +735,14 @@ def toggle_chat(n_clicks, current_style):
     if current_style["display"] == "none":
         return {**current_style, "display": "block"}
     return {**current_style, "display": "none"}
+
+@socketio.on("connect")
+def on_connect():
+    print("Client connected")
+
+@socketio.on("disconnect")
+def on_disconnect():
+    print("Client disconnected")
 
 
 if __name__ == "__main__":
