@@ -38,6 +38,7 @@ embedding_dim = embeddings.shape[1]
 faiss_index = faiss.IndexFlatL2(embedding_dim)
 #faiss_index.add(np.array(embeddings))
 faiss_index.add(embeddings.astype('float32'))
+global_chat_histories=[]
 
 # 4. Retrieval function
 def retrieve(user_input, top_k=5):
@@ -61,7 +62,7 @@ def chatbox():
             'textAlign': 'center'}
             ),
         #dcc.Store(id="chat-history", storage_type="session"),
-        dcc.Store(id="chat-history", data=[]),
+        dcc.Store(id="chat-history", data=global_chat_histories),
         dbc.Row([
             dbc.Col([
                 html.Div([
@@ -96,120 +97,6 @@ def chatbox():
     ], style={'width': '400px', 'margin': '0 auto', 'padding': '10px', 'border': '1px solid #ddd', 'borderRadius': '10px', 'fontFamily': 'Helvetica', 'marginTop': '10px',
               "boxShadow": "0px 4px 6px rgba(0,0,0,0.1)", 'backgroundColor': '#f9f9f9'})
 
-# callback untuk chatbot
-@callback(
-    Output('chat-box', 'children'), 
-    Output('chat-history', 'data'), 
-    Output('user-input', 'value'),
-    Output("notification_wrapper", "children", allow_duplicate=True),
-    Input('send-button', 'n_clicks'),
-    State('user-input', 'value'), 
-    State('chat-history', 'data'), 
-    State("socketio", "socketId"),
-    running=[[Output("streaming-process", "children"), "", None]],
-    prevent_initial_call=True
-    )
-def update_chatbot_output(n_clicks, user_input, chat_history, socket_id):
-    if not user_input or not socket_id:
-        return dash.no_update, chat_history, "", []
-
-    # Jika tidak ada, inisialisasi sebagai list kosong
-    if chat_history is None:
-        chat_history = []
-    
-        # Pesan dari pengguna
-    user_message = {
-        "role": "user",
-        "content": user_input,
-        "style":{
-            'backgroundColor': '#007bff', 'color': 'white', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
-            'alignSelf': 'flex-end', 'maxWidth': '80%', 'margin-left': 'auto', 'fontFamily': 'Helvetica', 'width' : 'fit-content', 'margin-right': '5px'
-        }
-    }
-
-    chat_history.append(user_message)
-
-    chat_elements = [
-        html.Div(message["content"], style=message["style"])
-        for message in chat_history
-        ]
-
-    df = retrieve(user_input, top_k=5)
-    conversation_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
-
-    # Generate insights
-    insights = []
-
-    # Basic DataFrame Information
-    insights.append(
-        f"The DataFrame contains {len(df)} rows and {len(df.columns)} columns."
-    )
-    insights.append("Here are the first 5 rows of the DataFrame:\n")
-    insights.append(df.head().to_string(index=False))
-
-    # Summary Statistics
-    insights.append("\nSummary Statistics:")
-    insights.append(df.describe().to_string())
-
-    # Column Information
-    insights.append("\nColumn Information:")
-    for col in df.columns:
-        insights.append(f"- Column '{col}' has {df[col].nunique()} unique values.")
-
-    insights_text = "\n".join(insights)
-
-    prompt = (
-        "Objective: Provide insights for inventory optimization."
-        "Instructions: You will be given a dataset containing inventory information from a company, including product data, stock levels, demand rates, lead times, and other relevant data. Your task is to provide insights that can help optimize the company's inventory management. The insights should be based on the available data and aim to improve efficiency, reduce waste, and ensure optimal stock levels."
-        "Possible areas to explore:"
-        "1.Identify Overstocked and Understocked Products: Find products that are overstocked or understocked and recommend adjustments in ordering or stock management."
-        "2.Demand Forecasting: Use historical data to predict future demand and recommend changes in procurement strategies."
-        "3.Inventory Turnover Analysis: Identify products with slow turnover rates and provide suggestions to increase sales or reduce order quantities."
-        "4.Lead Time Optimization: Analyze the lead time for specific products and recommend when to reorder to ensure stock availability without overstocking."
-        "5.Storage Space Management: Provide suggestions on how to optimize storage space usage based on inventory data."
-        "6.Cost Analysis: Identify high-cost products that are not moving or selling well, and suggest ways to reduce storage costs or find alternative suppliers."
-        "Provide data-driven insights to improve inventory management, making it more efficient and cost-effective. Ensure that the recommendations align with the goal of optimization and cost savings for the company."
-        "The user should be invited to ask another question at the end of the response. You can also respond based on the conversation history. You can also answer in Indonesian, depending on the user's question"
-        #"You can also answer in Indonesian, depending on the user's question. The user should be invited to ask another question at the end of the response"
-        #"In addition to the insights, generate visualizations that help better understand and communicate the data."
-    )
-    messages = [{"role": "system", "content": f"{prompt}\n\nContext:\n\n{insights_text}\n\nconversation history: {conversation_history}"}]
-    messages.append({"role": "user", "content": user_input})  # Tambahkan pertanyaan baru
-
-    prompt = f"{prompt}\n\nContext:\n\n{insights_text}"
-    prompt = f"""{prompt}\n\nUser's Question: {user_input}"""
-    prompt = f"{prompt}\n\nconversation history: {conversation_history}"
-
-    response = openai.ChatCompletion.create(
-    model="gpt-4o", messages=messages, stream=True
-    #model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}]
-    )
-    bot_response = ""  # Mengembalikan respons dari chatbot
-    for chunk in response:
-        if len(chunk.choices) > 0:
-            text = chunk['choices'][0]['delta'].get('content' ,'')
-            if text:
-                bot_response += text
-                
-                emit("stream", text, namespace="/", to=socket_id)
-                time.sleep(0.05)
-
-    bot_message = {
-        "role": "bot",
-        "content": bot_response,
-        "style":{
-            'backgroundColor': '#f1f1f1', 'color': 'black', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
-            'alignSelf': 'flex-start', 'maxWidth': '80%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Helvetica', 'textAlign': 'left', 'margin-left': '5px'
-        }
-    }
-    # Perbarui chat_history
-    chat_history.append(bot_message)
-
-    chat_elements = [
-        html.Div(message["content"], style=message["style"])
-        for message in chat_history
-    ]
-    return chat_elements, chat_history, "", []
 
 clientside_callback(
     """connected => !connected""",
@@ -228,7 +115,16 @@ clientside_callback(
 )
 
 clientside_callback(
-    """(word, text) => text + word""",
+    """(word, text) => {
+        if (text == null) return word
+
+        let combinedText = text + word
+
+        combinedText = combinedText.replace(/\*/g, '')
+        combinedText = combinedText.replace(/\-/g, '')
+
+        return combinedText
+    }""",
     Output("streaming-process", "children", allow_duplicate=True),
     Input("socketio", "data-stream"),
     State("streaming-process", "children"),
