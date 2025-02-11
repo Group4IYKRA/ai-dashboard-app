@@ -10,14 +10,6 @@ def product_filter(stock_pivot):
         ],
         multi=True,
         placeholder="Product_ID",
-        style={
-            'width': '50%', 
-            'margin': '10px 0',
-            'textAlign': 'left',
-            'padding': '0',
-            'fontSize': '12px',
-            'fontFamily': 'Helvetica'
-        }
     )
 
 def from_filter(optim_df):
@@ -26,16 +18,8 @@ def from_filter(optim_df):
         options=[
             {'label': val, 'value': val} for val in sorted(optim_df['From'].unique())
         ],
-        multi=True,  # Allow multiple selections
+        multi=True,
         placeholder="From Warehouse",
-        style={
-            'width': '50%', 
-            'margin': '10px 0',
-            'textAlign': 'left',
-            'padding': '0',
-            'fontSize': '12px',
-            'fontFamily': 'Helvetica'
-        }
     )
 
 def to_filter(optim_df):
@@ -46,12 +30,4 @@ def to_filter(optim_df):
         ],
         multi=True,
         placeholder="To Warehouse",
-        style={
-            'width': '50%', 
-            'margin': '10px 0',
-            'textAlign': 'left',
-            'padding': '0',
-            'fontSize': '12px',
-            'fontFamily': 'Helvetica'
-        }
     )

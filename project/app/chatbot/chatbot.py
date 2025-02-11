@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output, callback, State
+from dash import dcc, html, Input, Output, callback, State, clientside_callback, Dash
 import pandas as pd
 import plotly.express as px
 from dash.dependencies import Input, Output
@@ -9,10 +9,15 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 import random
-from project.config import open_ai_key
+from dotenv import load_dotenv
+from dash_socketio import DashSocketIO
+import time
+from flask_socketio import SocketIO, emit
+import dash_bootstrap_components as dbc
 
 # Load environment variables
-openai.api_key = open_ai_key
+load_dotenv()
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Menggunakan OpenAI untuk chatbot (menggunakan GPT-3 atau GPT-4)
 # 1. Load and preprocess data
@@ -44,7 +49,7 @@ def retrieve(user_input, top_k=5):
     return results
 
 def chatbox():
-    return html.Div([
+    return dbc.Container([
         # Area chat dengan scroll
         html.Div([
             html.H2("Chatbot"),
@@ -57,17 +62,21 @@ def chatbox():
             ),
         #dcc.Store(id="chat-history", storage_type="session"),
         dcc.Store(id="chat-history", data=[]),
-        dcc.Loading(
-            id='loading-chat',
-            type='circle',
-            children=[
-                html.Div(id='chat-box', style={
-                    'height': '250px', 'overflowY': 'scroll', 'border': '1px solid #ddd', 'padding': '10px', 'borderRadius': '10px',
-                    'backgroundColor': '#f9f9f9', 'marginBottom': '20px'
-                })
-            ]
-        ),
-
+        dbc.Row([
+            dbc.Col([
+                html.Div([
+                    html.Div(id='chat-box'),
+                    html.Div(id="streaming-process", style={
+                                                        'backgroundColor': '#f1f1f1', 'color': 'black', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
+                                                        'alignSelf': 'flex-start', 'maxWidth': '80%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Helvetica', 
+                                                        'textAlign': 'left', 'margin-left': '5px'}),
+                ], style={
+                        'height': '250px', 'overflowY': 'scroll', 'border': '1px solid #ddd', 'padding': '10px', 'borderRadius': '10px',
+                        'backgroundColor': '#f9f9f9', 'marginBottom': '20px'}),
+                html.Div(id="notification_wrapper"),
+                DashSocketIO(id='socketio', eventNames=["notification", "stream"]),
+            ]),
+        ]),
         # Input text untuk pesan
         dcc.Input(id='user-input', 
                   type='text', 
@@ -80,7 +89,6 @@ def chatbox():
                   style={
             'width' : '95%', 'padding': '10px', 'borderRadius': '5px', 'border': '1px solid #ddd'
         }),
-
         # Tombol kirim pesan
         html.Button('Send', id='send-button', n_clicks=0, style={
             'padding': '10px 20px', 'backgroundColor': '#007bff', 'border': 'none', 'color': 'white', 'borderRadius': '5px'
@@ -90,14 +98,20 @@ def chatbox():
 
 # callback untuk chatbot
 @callback(
-    [Output('chat-box', 'children'), Output('chat-history', 'data'), Output('user-input', 'value'),],
-    [Input('send-button', 'n_clicks')],
-    [State('user-input', 'value'), State('chat-history', 'data')],
+    Output('chat-box', 'children'), 
+    Output('chat-history', 'data'), 
+    Output('user-input', 'value'),
+    Output("notification_wrapper", "children", allow_duplicate=True),
+    Input('send-button', 'n_clicks'),
+    State('user-input', 'value'), 
+    State('chat-history', 'data'), 
+    State("socketio", "socketId"),
+    running=[[Output("streaming-process", "children"), "", None]],
     prevent_initial_call=True
     )
-def update_chatbot_output(n_clicks, user_input, chat_history):
-    if not user_input:
-        return dash.no_update, chat_history
+def update_chatbot_output(n_clicks, user_input, chat_history, socket_id):
+    if not user_input or not socket_id:
+        return dash.no_update, chat_history, "", []
 
     # Jika tidak ada, inisialisasi sebagai list kosong
     if chat_history is None:
@@ -112,6 +126,13 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
             'alignSelf': 'flex-end', 'maxWidth': '80%', 'margin-left': 'auto', 'fontFamily': 'Helvetica', 'width' : 'fit-content', 'margin-right': '5px'
         }
     }
+
+    chat_history.append(user_message)
+
+    chat_elements = [
+        html.Div(message["content"], style=message["style"])
+        for message in chat_history
+        ]
 
     df = retrieve(user_input, top_k=5)
     conversation_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
@@ -160,10 +181,19 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
     prompt = f"{prompt}\n\nconversation history: {conversation_history}"
 
     response = openai.ChatCompletion.create(
-    model="gpt-4o", messages=messages
+    model="gpt-4o", messages=messages, stream=True
     #model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}]
     )
-    bot_response = response.choices[0].message.content  # Mengembalikan respons dari chatbot
+    bot_response = ""  # Mengembalikan respons dari chatbot
+    for chunk in response:
+        if len(chunk.choices) > 0:
+            text = chunk['choices'][0]['delta'].get('content' ,'')
+            if text:
+                bot_response += text
+                
+                emit("stream", text, namespace="/", to=socket_id)
+                time.sleep(0.05)
+
     bot_message = {
         "role": "bot",
         "content": bot_response,
@@ -173,12 +203,34 @@ def update_chatbot_output(n_clicks, user_input, chat_history):
         }
     }
     # Perbarui chat_history
-    chat_history.append(user_message)
     chat_history.append(bot_message)
 
     chat_elements = [
         html.Div(message["content"], style=message["style"])
         for message in chat_history
     ]
+    return chat_elements, chat_history, "", []
 
-    return chat_elements, chat_history, ""
+clientside_callback(
+    """connected => !connected""",
+    Output("send-button", "disabled"),
+    Input("socketio", "connected"),
+)
+
+clientside_callback(
+    """(notification) => {
+        if (!notification) return dash_clientside.no_update
+        return notification
+    }""",
+    Output("notification_wrapper", "children", allow_duplicate=True),
+    Input("socketio", "data-notification"),
+    prevent_initial_call=True,
+)
+
+clientside_callback(
+    """(word, text) => text + word""",
+    Output("streaming-process", "children", allow_duplicate=True),
+    Input("socketio", "data-stream"),
+    State("streaming-process", "children"),
+    prevent_initial_call=True,
+)

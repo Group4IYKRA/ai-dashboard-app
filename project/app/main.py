@@ -1,29 +1,23 @@
 # Entry point for the application
-from dash import Dash, html, Input, Output
-from flask import jsonify
+from dash import Dash, dcc, html, Input, Output, State
+import dash_bootstrap_components as dbc
+import pandas as pd
 from .dashboard import *
+import os
+from flask_caching import Cache
 from .chatbot import *
 from project.data.query import *
 from project.models.pulp_solver import pulp_solver
 import os
-import subprocess
-import logging
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
+from flask_socketio import SocketIO
+from sklearn.preprocessing import MinMaxScaler
 
 # Get all necessary dfs
 current_dir = os.getcwd()
 processed_dir = 'project/data/processed/'
-file_path1 = os.path.join(processed_dir, 'stock_pivot_data.csv')
-file_path2 = os.path.join(processed_dir, 'pulp_result_data.csv')
-file_path3 = os.path.join(processed_dir, 'metrics_raw_data.csv')
+file_path1 = os.path.join(current_dir, processed_dir, 'stock_pivot_data.csv')
+file_path2 = os.path.join(current_dir, processed_dir, 'pulp_result_data.csv')
+file_path3 = os.path.join(current_dir, processed_dir, 'metrics_raw_data.csv')
 
 # Store the original data globally
 if not os.path.exists(file_path1):
@@ -40,139 +34,638 @@ if not os.path.exists(file_path3):
 optim_df = pd.read_csv(os.path.join(processed_dir, 'pulp_result_data.csv'))
 optim_df = optim_df.drop(columns=['Unnamed: 0'])
 stock_pivot = pd.read_csv(os.path.join(processed_dir, 'stock_pivot_data.csv'))
-stock_pivot = stock_pivot.drop(columns=['Unnamed: 0'])
+stock_pivot = stock_pivot.drop(columns=['Unnamed: 0', 'Category', 'Brand', 'Color'])
 metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv'))
-logging.info(f'File Ready! in {processed_dir}, current working directory: {current_dir}')
 
-app = Dash(__name__)
+# ----------------------Cache intermediate dataframe----------------------
+app = Dash(__name__, external_stylesheets=[dbc.themes.LUMEN, "/assets/styles2.css"])
 server = app.server
+cache = Cache(app.server, config={'CACHE_TYPE': 'simple'})
 
+# Preprocessing for Overstock Cost
+@cache.memoize(timeout=600)
+def preprocess_overstock(metrics_raw_data):
+    overstock_cost = (
+        metrics_raw_data.groupby(['Year_Quarter', 'Product_ID', 'Date'], as_index=False)
+        .agg({
+            'Daily_Sales': 'sum',
+            'Stock_Level': 'sum',
+            'Inventory_Holding_Cost': 'mean'
+        })
+    )
+    overstock_cost = (
+        overstock_cost.sort_values('Date')
+        .groupby(['Year_Quarter'], as_index=False)
+        .agg({
+            'Date': 'max',
+            'Daily_Sales': 'mean',
+            'Stock_Level': 'last',
+            'Inventory_Holding_Cost': 'last'
+        })
+    )
+    overstock_cost['Inventory_Holding_Cost'] = overstock_cost['Inventory_Holding_Cost'].round(2)
+    overstock_cost['Daily_Sales'] = overstock_cost['Daily_Sales'].round(2)
+    overstock_cost['Overstock_Cost'] = (overstock_cost['Stock_Level'] - overstock_cost['Daily_Sales']) * overstock_cost['Inventory_Holding_Cost']
+    overstock_cost['Overstock_Cost'] = overstock_cost['Overstock_Cost'].round(2)
+    overstock_cost.drop(columns=['Daily_Sales', 'Stock_Level', 'Date', 'Inventory_Holding_Cost'], inplace=True)
 
-#dashboard_layout = html.Div([
-app.layout = html.Div([
-    html.Div([
-        html.Div([
-            html.H1(
-                "STOCK OPTIMIZATION HUB DASHBOARD", 
-                style={
-                    'position': 'sticky',
-                    'top':'0',
-                    'textAlign': 'left',
-                    'fontFamily': 'Helvetica',
-                    'marginBottom': '20px',
-                    'marginLeft': '20px',
-                    'color': 'white',
-                    'padding-left': '25px',
-                    'zIndex':'1000',
-                }
-            ),
-        ], style={
-            'flex': '1',
-            'width': '39%',
-            'position': 'sticky',
-            'zIndex':'1000',
-        }),
-        html.Div([
-            product_filter(stock_pivot),
-            from_filter(optim_df),
-            to_filter(optim_df),
-            html.Div([
-                html.Button('Get new data', id='refresh-button', n_clicks=0, style={'margin' : '10px'}),
-                html.Div(id='status-message'),
+    return overstock_cost
+
+# Preprocessing for Stockout Ratio
+@cache.memoize(timeout=600)
+def preprocess_stockout(metrics_raw_data):
+    stockout_ratio = metrics_raw_data.groupby('Year_Quarter', as_index=False).agg({'Daily_Sales':'sum', 'Lost_Sales':'sum'})
+    stockout_ratio['stockout_ratio'] = (stockout_ratio['Lost_Sales'] / (stockout_ratio['Lost_Sales'] + stockout_ratio['Daily_Sales'])) * 100
+    stockout_ratio.drop(columns=['Daily_Sales', 'Lost_Sales'], inplace=True)
+
+    return stockout_ratio
+    
+# Preprocessing for ITR
+@cache.memoize(timeout=600)
+def preprocess_itr(metrics_raw_data):
+    metrics_raw_data['Date'] = pd.to_datetime(metrics_raw_data['Date'])
+    itr = metrics_raw_data.groupby('Year_Quarter', as_index=False).agg({'Date':['min','max'], 'Daily_Sales':'sum'})
+    itr.columns = ['_'.join(col).strip() if col[1] else col[0] for col in itr.columns.values]
+
+    earliest_stock_sum = [(metrics_raw_data[metrics_raw_data['Date']==i]['Stock_Level'].sum()) for i in itr['Date_min']]
+    latest_stock_sum = [(metrics_raw_data[metrics_raw_data['Date']==i]['Stock_Level'].sum()) for i in itr['Date_max']]
+
+    itr['Earliest_Stock_Sum'] = earliest_stock_sum
+    itr['Latest_Stock_Sum'] = latest_stock_sum
+
+    itr['ITR'] = (itr['Daily_Sales_sum']/((itr['Latest_Stock_Sum']+itr['Earliest_Stock_Sum'])/2)).round(2)
+    itr.drop(columns=['Date_min','Date_max', 'Daily_Sales_sum', 'Earliest_Stock_Sum', 'Latest_Stock_Sum'], inplace=True)
+
+    return itr
+
+# Preprocessing for barpolar
+@cache.memoize(timeout=600)
+def preprocess_barpolar(metrics_raw_data):
+    def calculate_inventory_turnover_ratio(metrics_raw_data: pd.DataFrame, target_quarter: str):
+        # Group by quarter and product to get sales and date ranges
+        inventory_metrics = metrics_raw_data.groupby(
+            ['Year_Quarter', 'Product_ID'], 
+            as_index=False
+        ).agg({
+            'Date': ['min', 'max'],
+            'Daily_Sales': 'sum'
+        })
+        
+        # Clean up column names
+        inventory_metrics.columns = ['_'.join(col).strip() if col[1] else col[0] 
+                                for col in inventory_metrics.columns.values]
+        
+        # Filter for target quarter
+        inventory_metrics = inventory_metrics[inventory_metrics['Year_Quarter'] == target_quarter]
+        
+        # Calculate stock levels for start and end dates
+        stock_levels = {}
+        for date_type in ['min', 'max']:
+            stock_levels[date_type] = {
+                prod: metrics_raw_data[
+                    (metrics_raw_data['Product_ID'] == prod) & 
+                    (metrics_raw_data['Date'].isin(inventory_metrics[f'Date_{date_type}']))
+                ]['Stock_Level'].sum()
+                for prod in inventory_metrics['Product_ID'].unique()
+            }
+        
+        # Add stock levels to dataframe
+        inventory_metrics['Earliest_Stock_Sum'] = inventory_metrics['Product_ID'].map(stock_levels['min'])
+        inventory_metrics['Latest_Stock_Sum'] = inventory_metrics['Product_ID'].map(stock_levels['max'])
+        
+        # Calculate ITR
+        inventory_metrics['ITR'] = (
+            inventory_metrics['Daily_Sales_sum'] / 
+            ((inventory_metrics['Latest_Stock_Sum'] + inventory_metrics['Earliest_Stock_Sum']) / 2)
+        ).round(2)
+        
+        return inventory_metrics[['Year_Quarter', 'Product_ID', 'ITR']]
+
+    def calculate_stockout_ratio(metrics_raw_data: pd.DataFrame, target_quarter: str):
+        stockout_metrics = metrics_raw_data.groupby(
+            ['Year_Quarter', 'Product_ID'], 
+            as_index=False
+        ).agg({
+            'Daily_Sales': 'sum',
+            'Lost_Sales': 'sum'
+        })
+        
+        stockout_metrics = stockout_metrics[stockout_metrics['Year_Quarter'] == target_quarter]
+        
+        stockout_metrics['stockout_ratio'] = (
+            (stockout_metrics['Lost_Sales'] / 
+            (stockout_metrics['Lost_Sales'] + stockout_metrics['Daily_Sales'])) * 100
+        ).round(2)
+        
+        return stockout_metrics[['Year_Quarter', 'Product_ID', 'stockout_ratio']]
+
+    def calculate_overstock_cost(metrics_raw_data: pd.DataFrame, target_quarter: str):
+        quarterly_data = metrics_raw_data[metrics_raw_data['Year_Quarter'] == target_quarter]
+        
+        # Calculate daily metrics
+        daily_metrics = quarterly_data.groupby(
+            ['Year_Quarter', 'Product_ID', 'Date'], 
+            as_index=False
+        ).agg({
+            'Daily_Sales': 'sum',
+            'Stock_Level': 'sum',
+            'Inventory_Holding_Cost': 'mean'
+        })
+        
+        # Calculate final metrics
+        overstock_metrics = (
+            daily_metrics.sort_values('Date')
+            .groupby(['Year_Quarter', 'Product_ID'], as_index=False)
+            .agg({
+                'Daily_Sales': 'mean',
+                'Stock_Level': 'last',
+                'Inventory_Holding_Cost': 'last'
+            })
+        )
+        
+        # Calculate overstock cost
+        overstock_metrics['overstock_cost'] = (
+            (overstock_metrics['Stock_Level'] - overstock_metrics['Daily_Sales']) * 
+            overstock_metrics['Inventory_Holding_Cost']
+        ).round(2)
+        
+        return overstock_metrics[['Year_Quarter', 'Product_ID', 'overstock_cost']]
+    
+    target_quarter = '2024-Q4'
+    itr_df = calculate_inventory_turnover_ratio(metrics_raw_data, target_quarter)
+    stockout_df = calculate_stockout_ratio(metrics_raw_data, target_quarter)
+    overstock_df = calculate_overstock_cost(metrics_raw_data, target_quarter)
+    
+    # Combine all metrics
+    combined_metrics = (
+        itr_df
+        .merge(stockout_df, on=['Product_ID', 'Year_Quarter'])
+        .merge(overstock_df, on=['Product_ID', 'Year_Quarter'])
+    )
+    
+    combined_metrics.rename(columns={'stockout_ratio':'Stockout Ratio', 'overstock_cost':'Overstock Cost'}, inplace=True)
+    
+    return combined_metrics
+
+# Preprocessing forecast vs actual
+def preprocess_fct_vs_act(metrics_raw_data):
+    d_min30 = sorted(metrics_raw_data['Date'].unique().tolist())[-30:]
+    fct_vs_act = metrics_raw_data[metrics_raw_data['Date'].isin(d_min30)]
+    fct_vs_act = fct_vs_act.groupby('Date', as_index=False).agg({'Daily_Sales':'sum', 'Forecasted_Demand':'sum'})
+    fct_vs_act = fct_vs_act.sort_values(by=['Date'])
+
+    return fct_vs_act
+
+overstock_cost = preprocess_overstock(metrics_raw_data)
+stockout_ratio = preprocess_stockout(metrics_raw_data)
+itr = preprocess_itr(metrics_raw_data)
+barpolar = preprocess_barpolar(metrics_raw_data)
+fct_vs_act = preprocess_fct_vs_act(metrics_raw_data)
+
+# Normalize barpolar metric for better visualization
+ITR_scaler = MinMaxScaler().fit(barpolar[['ITR']])
+stockout_scaler = MinMaxScaler().fit(barpolar[['Stockout Ratio']])
+overstock_scaler = MinMaxScaler().fit(barpolar[['Overstock Cost']])
+
+def normalize_barpolar(barpolar):
+    barpolar['ITR_norm'] = ITR_scaler.transform(barpolar[['ITR']])
+    barpolar['stockout_ratio_norm'] = stockout_scaler.transform(barpolar[['Stockout Ratio']])
+    barpolar['overstock_cost_norm'] = overstock_scaler.transform(barpolar[['Overstock Cost']])
+
+    return barpolar
+
+barpolar = normalize_barpolar(barpolar)
+
+# ----------------------Dashboard Layout----------------------
+app.layout = dbc.Container(
+    class_name='body-container',
+    fluid=True,
+    children=[
+        
+    dbc.Row(
+    class_name='header-container',
+    children=[                         
+        dbc.Col(
+        class_name='title-and-logo',
+        align='end',
+        width=7,
+        children=dbc.Stack(
+            direction='horizontal',
+            children=[                            
+                html.Img(className='logo-iykra', src='assets/logo - white.png'),
+                html.Img(className='logo-ai', src='assets/logo AI Engineer Fellowship-horizontal-white.png'), 
+                html.H1('Stock Optimization Hub'),
             ]),
-        ], style={
-            'position': 'sticky',
-            'top': '0',
-            'display': 'flex',          
-            'alignItems': 'center',     
-            'justifyContent': 'space-between',  
-            'marginBottom': '2px',
-            'width': '59%',
-            'flex': '1',
-            'zIndex':'1000',
-        }),
-    ], style={
-        'position':'sticky',
-        'top': '0',
-        'display': 'flex',          
-        'alignItems': 'center',  
-        'marginBottom': '2px',
-        'width': '100%',
-        'backgroundColor': '#007BFF',
-        'border': '1px solid #ddd', 
-        'borderRadius': '10px',
-        'zIndex': '1000',
-    }),
-    html.Div([
-        dcc.Graph(id="stockout-ratio-scorecard", 
-                figure=create_stockout_scorecard(metrics_raw_data)),
-        dcc.Graph(id="stockout-ratio-linechart", 
-                figure=create_stockout_linechart(metrics_raw_data)),
-        dcc.Graph(id="stockout-ratio-barchart", 
-                figure=create_stockout_barchart(metrics_raw_data)),
-    ], style={
-        'display': 'flex',          
-        'alignItems': 'center',
-        'marginBottom': '2px',
-        'width': '100%',
-        'justifyContent': 'space-evenly',
-        'margin': 'auto'
-    }),
-    html.Div([
-        dcc.Graph(id="itr-scorecard", 
-                figure=create_itr_scorecard(metrics_raw_data)),
-        dcc.Graph(id="itr-linechart", 
-                figure=create_itr_linechart(metrics_raw_data)),
-        dcc.Graph(id="itr-barchart", 
-                figure=create_itr_barchart(metrics_raw_data)),
-    ], style={
-        'display': 'flex',          
-        'alignItems': 'center',  
-        'marginBottom': '2px',
-        'width': '100%',
-        'justifyContent': 'space-evenly',
-        'margin': 'auto'      
-    }),
-    html.Div([
-        dcc.Graph(id="overstock-cost-scorecard", 
-                figure=create_overstock_cost_scorecard(metrics_raw_data)),
-        dcc.Graph(id="overstock-cost-linechart", 
-                figure=create_overstock_cost_linechart(metrics_raw_data)),
-        dcc.Graph(id="overstock-cost-barchart", 
-                figure=create_overstock_cost_barchart(metrics_raw_data)),
-    ], style={
-        'display': 'flex',          
-        'alignItems': 'center',  
-        'marginBottom': '2px',
-        'width': '100%',
-        'justifyContent': 'space-evenly',
-        'margin': 'auto'           
-    }),
-    html.Div([
-        dcc.Graph(id='forecast-vs-actual-linechart',
-                  figure=create_fct_vs_act_linechart(metrics_raw_data), style={'width':'50%'}),
-        create_stock_optim(optim_df),
-        ], style={
-        'display': 'flex',          
-        'alignItems': 'center',  
-        'marginBottom': '2px',
-        'width': '100%',
-        'justifyContent': 'center',
-        }),
-    create_table(stock_pivot),
+        ),
+        dbc.Col(
+        class_name='filter product-filter',
+        align='center',
+        width=dict(size=1, offset=1),
+        children=product_filter(stock_pivot),
+        ),
+        dbc.Col(
+            class_name='filter from-filter',
+            align='center',
+            width=1,
+            children=from_filter(optim_df),
+        ),
+        dbc.Col(
+            class_name='filter to-filter',
+            align='center',
+            width=1,
+            children=to_filter(optim_df),
+        ),
+        ]
+    ),
+    html.Br(),
+    dbc.Row([
+        dbc.Col(
+        width=5,
+        children=[
+            dbc.Row(
+            class_name='metrics g-4',
+            justify='start',
+            children=[
+                dbc.Col(
+                class_name='overstock-cost-metric',
+                width=4,
+                children=dbc.Card(
+                    class_name='card overstock-cost-card',
+                    children=[
+                        dbc.CardHeader('Overstock Cost'),
+                        dbc.CardBody(
+                        class_name='metric-card-body',
+                        children=[
+                            dbc.Row(
+                            class_name='overstock-cost-card-body card-body g-0',
+                            children=[
+                                dbc.Col(
+                                class_name='metric-column1',
+                                children=dcc.Graph(
+                                    id='overstock-cost-scorecard',
+                                    config={'displayModeBar': False},
+                                    figure=create_overstock_cost_scorecard(overstock_cost), 
+                                    ),
+                                    width=6,
+                                ),
+                                dbc.Col(
+                                class_name='metric-column2',
+                                children=dcc.Graph(
+                                    id='overstock-cost-sparkline',
+                                    figure=create_overstock_cost_sparkline(overstock_cost),
+                                    config={'displayModeBar': False, 'staticPlot':True},
+                                    ),
+                                    width=6,
+                                ),
+                            ],
+                            ),
+                        ],
+                        ),
+                    ],
+                ),
+                ),
+                dbc.Col(
+                class_name='stockout-metric',
+                width=4,
+                children=dbc.Card(
+                    class_name='card stockout-card',
+                    children=[
+                        dbc.CardHeader('Stockout Ratio'),
+                        dbc.CardBody(
+                        class_name='metric-card-body',
+                        children=[
+                            dbc.Row(
+                            class_name='stockout-card-body card-body g-0',
+                            children=[
+                                dbc.Col(
+                                class_name='metric-column1',
+                                children=dcc.Graph(
+                                    id='stockout-ratio-scorecard',
+                                    config={'displayModeBar': False},
+                                    figure=create_stockout_scorecard(stockout_ratio), 
+                                    ),
+                                    width=6,
+                                ),
+                                dbc.Col(
+                                class_name='metric-column2',
+                                children=dcc.Graph(
+                                    id='stockout-ratio-sparkline',
+                                    figure=create_stockout_sparkline(stockout_ratio),
+                                    config={'displayModeBar': False, 'staticPlot':True},
+                                    ),
+                                    width=6,
+                                ),
+                            ],
+                            ),
+                        ],
+                        ),
+                    ],
+                ),
+                ),
+                dbc.Col(
+                class_name='itr-metric',
+                width=4,
+                children=dbc.Card(
+                    class_name='card itr-card',
+                    children=[
+                        dbc.CardHeader('ITR'),
+                        dbc.CardBody(
+                        class_name='metric-card-body',
+                        children=[
+                            dbc.Row(
+                            class_name='itr-card-body card-body g-0',
+                            children=[
+                                dbc.Col(
+                                class_name='metric-column1',
+                                children=dcc.Graph(
+                                    id='itr-scorecard',
+                                    config={'displayModeBar': False},
+                                    figure=create_itr_scorecard(itr), 
+                                    ),
+                                    width=6,
+                                ),
+                                dbc.Col(
+                                class_name='metric-column2',
+                                children=dcc.Graph(
+                                    id='itr-sparkline',
+                                    figure=create_itr_sparkline(itr),
+                                    config={'displayModeBar': False, 'staticPlot':True},
+                                    ),
+                                    width=6,
+                                ),
+                            ],
+                            ),
+                        ],
+                        ),
+                    ],
+                ),
+                ),
+            ]
+            ),
+            html.Br(),
+            dbc.Card(
+            class_name='barpolar-card card',
+            children=[
+                dbc.CardHeader(
+                    dbc.Row(
+                    id='barpolar-sort',
+                    class_name='barpolar g-0',
+                    children=[
+                        dbc.Col('Sort by:', width=2),
+                        dbc.Col(dcc.Dropdown(
+                        id='sort-dropdown',
+                        options=[
+                        {'label': html.Span(['Top 10 Highest Overstock Cost Product'], style={'color': '#000000', 'font-size': 20}), 'value': 'Overstock Cost'},
+                        {'label': html.Span(['Top 10 Highest Stockout Ratio Product'], style={'color': '#000000', 'font-size': 20}), 'value': 'Stockout Ratio'},
+                        {'label': html.Span(['Top 10 Slowest Inventory Turnover Product'], style={'color': '#000000', 'font-size': 20}), 'value': 'ITR'}
+                        ],
+                        style={'height':'10px', 'fontsize':'10px'},
+                        ), width=10),
+                    ],
+                    ),
+                ),
+                dbc.CardBody(
+                    dcc.Graph(
+                    id='barpolar-chart',
+                    style={'height':'470px','margin':'0'},
+                    figure=create_barpolar_top_10(barpolar),
+                    config={'displayModeBar': False}
+                    ),
+                ),
+            ],
+            ),
+        ]),
+        dbc.Col(
+        class_name='line-group',
+        width=7,
+        children=[
+            dbc.Row(
+            class_name='line-group1',
+            children=[
+                dbc.Col(
+                width=6,
+                children=[
+                    dbc.Card(
+                    class_name='overstock-cost-line-card card',
+                    children=[
+                        dbc.CardHeader('Overstock Cost Quarterly'),
+                        dbc.CardBody(
+                        class_name='overstock-cost-line-card-body card-body',
+                        children=[
+                            dcc.Graph(
+                            id='overstock-cost-linechart',
+                            figure=create_overstock_cost_linechart(overstock_cost),
+                            config={'displayModeBar': False},
+                            ),
+                        ])
+                    ]),
+                ]),
+                dbc.Col(
+                width=6,
+                children=[
+                    dbc.Card(
+                    class_name='stockout-ratio-line-card card',
+                    children=[
+                        dbc.CardHeader('Stockout Ratio Quarterly'),
+                        dbc.CardBody(
+                        class_name='stockout-ratio-line-card-body card-body',
+                        children=[
+                            dcc.Graph(
+                            id='stockout-ratio-linechart',
+                            figure=create_stockout_linechart(stockout_ratio),
+                            config={'displayModeBar': False},
+                            ),
+                        ])
+                    ]),
+                ]),
+            ]),
+            html.Br(),
+            dbc.Row(
+            class_name='line-group2',
+            children=[
+                dbc.Col(
+                width=6,
+                children=[
+                    dbc.Card(
+                    class_name='itr-line-card card',
+                    children=[
+                        dbc.CardHeader('Inventory Turnover Rate Quarterly'),
+                        dbc.CardBody(
+                        class_name='itr-line-card-body card-body',
+                        children=[
+                            dcc.Graph(
+                            id='itr-linechart',
+                            figure=create_itr_linechart(itr),
+                            config={'displayModeBar': False},
+                            ),
+                        ])
+                    ]),
+                ]),
+                dbc.Col(
+                width=6,
+                children=[
+                    dbc.Card(
+                    class_name='forecast-vs-actual-card card',
+                    children=[
+                        dbc.CardHeader('Historical Stock Forecast vs. Actual'),
+                        dbc.CardBody(
+                        class_name='forecast-vs-actual-line-card-body card-body',
+                        children=[
+                            dcc.Graph(
+                            id='forecast-vs-actual-linechart',
+                            figure=create_fct_vs_act_linechart(fct_vs_act),
+                            config={'displayModeBar': False},
+                            ),
+                        ])
+                    ]),
+                ]),
+            ]),
+            html.Br(),
+            dbc.Row(
+                class_name='g-0',
+                children=[
+                dbc.Col(html.H4('Open table:'), width=3),
+                dbc.Col(
+                    dbc.Button(
+                    "Current Stock Monitor",
+                    id="open_stock",
+                    className="button bottom-button",
+                    n_clicks=0,
+                    style={"margin": "0"}
+                    ), width=4,  
+                ),
+                dbc.Col(
+                    dbc.Button(
+                    "Stock Optimization Plan",
+                    id="open_optim",
+                    className="button bottom-button",
+                    n_clicks=0,
+                    style={"margin": "0"}
+                    ), width=4,  
+                ),
+            ]),
+            
+        ])
+    ]),
     html.Div([
     # Tombol untuk membuka/meminimalkan chatbot
         html.Div(
-            html.Button("💬 Chat", id="toggle-chat", style={"borderRadius": "50%", "width": "60px", "height": "60px", "backgroundColor": "#007BFF", "color": "white"}),
+            html.Button("💬 Chat", id="toggle-chat", style={"borderRadius": "10px", "width": "60px", "height": "60px", "backgroundColor": "#007BFF", "color": "white"}),
             style={"position": "fixed", "bottom": "20px", "right": "20px", "zIndex": "1000"}
         ),
-        html.Div(id="chat-window", children = chatbox(),style={'display': 'none',"bottom": "90px", "right": "20px", "position": "fixed", "zIndex": "1000"}),
-    ])
+        html.Div(id="chat-window", children = chatbox(),style={'display': 'none',"bottom": "90px", "right": "20px", "position": "fixed", "zIndex": "1000", "fontsize" : "14", "width":"400px"}),
+    ]),
+    dbc.Collapse(
+        id='stock-pivot-collapse',
+        is_open=False,
+        children=[
+            html.Br(),
+            dbc.Button(
+            "Save as Excel",
+            id="save-button-stock-pivot",
+            className="button save-button",
+            n_clicks=0,
+            style={"margin": "0"}
+            ),
+            create_current_stock_table(stock_pivot)
+        ]
+    ),
+    dbc.Collapse(
+        id='stock-optim-collapse',
+        is_open=False,
+        children=[
+            html.Br(),
+            dbc.Button(
+            "Save as Excel",
+            id="save-button-stock-optim",
+            className="button save-button",
+            n_clicks=0,
+            style={"margin": "0"}
+            ),
+            create_stock_optim(optim_df)
+        ]
+    ),
 ])
 
+# Callback to update_charts
 @app.callback(
-    Output('stock_pivot','data'),
-    Output('stock_optimization', 'data'),
+    Output('stockout-ratio-scorecard', 'figure'), 
+    Output('stockout-ratio-sparkline', 'figure'), 
+    Output('itr-scorecard', 'figure'),
+    Output('itr-sparkline', 'figure'),
+    Output('overstock-cost-scorecard', 'figure'),
+    Output('overstock-cost-sparkline', 'figure'), 
+    Output('stockout-ratio-linechart', 'figure'), 
+    Output('itr-linechart', 'figure'), 
+    Output('overstock-cost-linechart', 'figure'), 
+    Output('barpolar-chart', 'figure'),
+    Output('forecast-vs-actual-linechart', 'figure'),
+    Input('product_filter_dropdown', 'value'),
+    Input('from_filter_dropdown', 'value'),
+    Input('to_filter_dropdown', 'value'),
+    Input('sort-dropdown', 'value'),
+    prevent_initial_call=True
+)
+def update_charts(selected_product_ids, 
+                  selected_from_warehouse, 
+                  selected_to_warehouse,
+                  selected_sort_option):
+    
+    global metrics_raw_data
+    filtered_metrics = metrics_raw_data.copy()
+    if selected_product_ids or selected_from_warehouse or selected_to_warehouse:
+        selected_products = selected_product_ids or filtered_metrics['Product_ID'].unique()
+        filtered_metrics = filtered_metrics[filtered_metrics['Product_ID'].isin(selected_products)]
+
+        selected_from = selected_from_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
+        selected_to = selected_to_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
+        selected_warehouse = list(set(selected_from).union(set(selected_to))) \
+                                if selected_from_warehouse and selected_to_warehouse \
+                                else selected_from_warehouse or selected_to_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
+        filtered_metrics = filtered_metrics[filtered_metrics['Warehouse_Loc_ID'].isin(selected_warehouse)]
+        
+    stockout_data = preprocess_stockout(filtered_metrics)
+    itr_data = preprocess_itr(filtered_metrics)
+    overstock_data = preprocess_overstock(filtered_metrics)
+    barpolar_data = normalize_barpolar(preprocess_barpolar(filtered_metrics))
+    forecast_data = preprocess_fct_vs_act(filtered_metrics)
+
+    return [
+        create_stockout_scorecard(stockout_data),
+        create_stockout_sparkline(stockout_data),
+        create_itr_scorecard(itr_data),
+        create_itr_sparkline(itr_data),
+        create_overstock_cost_scorecard(overstock_data),
+        create_overstock_cost_sparkline(overstock_data),
+        create_stockout_linechart(stockout_data),
+        create_itr_linechart(itr_data),
+        create_overstock_cost_linechart(overstock_data),
+        create_barpolar_top_10(barpolar_data, sort_by=selected_sort_option),
+        create_fct_vs_act_linechart(forecast_data),
+    ]
+
+@app.callback(
+    Output('stock-pivot-collapse', 'is_open'),
+    Input('open_stock', 'n_clicks'),
+    State('stock-pivot-collapse', 'is_open'),
+)
+def toggle_stock_collapse(n, is_open):
+    if n:
+        return not is_open
+
+@app.callback(
+    Output('stock-optim-collapse', 'is_open'),
+    Input('open_optim', 'n_clicks'),
+    State('stock-optim-collapse', 'is_open'),
+)
+def toggle_optim_collapse(n, is_open):
+    if n:
+        return not is_open
+
+@app.callback(
+    Output('stock_pivot','rowData'),
+    Output('stock_pivot', 'columnDefs'),
+    Output('stock_optimization', 'rowData'),
     Input('product_filter_dropdown', 'value'),
     Input('from_filter_dropdown', 'value'),
     Input('to_filter_dropdown', 'value'),
@@ -194,12 +687,13 @@ def update_tables(selected_product_ids,
 
     # Filter pivot table
     pivot_filter = filtered_pivot['Product_ID'].isin(selected_products)
-    filtered_pivot = filtered_pivot[pivot_filter]
+    filtered_pivot= filtered_pivot[pivot_filter]
 
     selected_warehouse = [item for item in selected_warehouse if item != 'Supplier']
-    columns = ['Product_ID', 'Category', 'Brand', 'Color']
+    columns = ['Product_ID']
     columns.extend(selected_warehouse or [])
     filtered_pivot = filtered_pivot[columns]
+    filtered_pivot_col = [{'field': col, 'pinned': 'left'} if col == 'Product_ID' else {'field': col} for col in filtered_pivot.columns]
     
     # Filter filtered_optim 
     optim_filter = (filtered_optim['Product_ID'].isin(selected_products)) & \
@@ -207,52 +701,26 @@ def update_tables(selected_product_ids,
                     (filtered_optim['To'].isin(selected_to))
     filtered_optim = filtered_optim[optim_filter]
 
-    return filtered_pivot.to_dict('records'), filtered_optim.to_dict('records')
+    return filtered_pivot.to_dict('records'), filtered_pivot_col, filtered_optim.to_dict('records')
 
-@app.callback(
-    Output('stockout-ratio-scorecard', 'figure'), 
-    Output('itr-scorecard', 'figure'), 
-    Output('overstock-cost-scorecard', 'figure'), 
-    Output('stockout-ratio-linechart', 'figure'), 
-    Output('itr-linechart', 'figure'), 
-    Output('overstock-cost-linechart', 'figure'), 
-    Output('stockout-ratio-barchart', 'figure'), 
-    Output('itr-barchart', 'figure'), 
-    Output('overstock-cost-barchart', 'figure'), 
-    Output('forecast-vs-actual-linechart', 'figure'),
-    Input('product_filter_dropdown', 'value'),
-    Input('from_filter_dropdown', 'value'),
-    Input('to_filter_dropdown', 'value')
+# Save as csv
+@callback(
+    Output("stock_pivot", "exportDataAsCsv"),
+    Input("save-button-stock-pivot", "n_clicks"),
 )
-def update_charts(selected_product_ids, 
-                  selected_from_warehouse, 
-                  selected_to_warehouse):
-    
-    global metrics_raw_data
-    filtered_metrics = metrics_raw_data.copy()
-    if selected_product_ids or selected_from_warehouse or selected_to_warehouse:
-        selected_products = selected_product_ids or filtered_metrics['Product_ID'].unique()
-        filtered_metrics = filtered_metrics[filtered_metrics['Product_ID'].isin(selected_products)]
+def export_stock_pivot_as_csv(n_clicks):
+    if n_clicks:
+        return True
+    return False
 
-        selected_from = selected_from_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
-        selected_to = selected_to_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
-        selected_warehouse = list(set(selected_from).union(set(selected_to))) \
-                                if selected_from_warehouse and selected_to_warehouse \
-                                else selected_from_warehouse or selected_to_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
-        filtered_metrics = filtered_metrics[filtered_metrics['Warehouse_Loc_ID'].isin(selected_warehouse)]
-        
-    return [
-        create_stockout_scorecard(filtered_metrics),
-        create_itr_scorecard(filtered_metrics),
-        create_overstock_cost_scorecard(filtered_metrics),
-        create_stockout_linechart(filtered_metrics),
-        create_itr_linechart(filtered_metrics),
-        create_overstock_cost_linechart(filtered_metrics),
-        create_stockout_barchart(filtered_metrics),
-        create_itr_barchart(filtered_metrics),
-        create_overstock_cost_barchart(filtered_metrics),
-        create_fct_vs_act_linechart(filtered_metrics)       
-    ]
+@callback(
+    Output("stock_optimization", "exportDataAsCsv"),
+    Input("save-button-stock-optim", "n_clicks"),
+)
+def export_stock_optim_as_csv(n_clicks):
+    if n_clicks:
+        return True
+    return False
 
 # Callback to show chatbot window
 # Callback untuk menampilkan/menyembunyikan chatbot
@@ -267,82 +735,6 @@ def toggle_chat(n_clicks, current_style):
         return {**current_style, "display": "block"}
     return {**current_style, "display": "none"}
 
-# Callback to refresh the pages
-@app.callback(
-    Output('status-message', 'children'),
-    Input('refresh-button', 'n_clicks'),
-    prevent_initial_call=True
-)
-def run_script_and_refresh(n_clicks):
-    if n_clicks is None:
-        return ""
-
-    try:
-        # Run the Python script
-        subprocess.run(
-            ["python", "-m", "project.data.hourly_pipeline"], 
-            capture_output=True, text=True, check=True
-        )
-        # Return success message
-        return "Complete! Please refresh page"
-    
-    except subprocess.CalledProcessError as e:
-        # Return error message and trigger refresh
-        return f"Error executing script:\n{e.stderr}"
-    except Exception as ex:
-        # Return unexpected error message and trigger refresh
-        return f"Unexpected error: {ex}", 0
-
-@server.route('/run-weekly-pipeline', methods=['GET'])
-def run_weekly_pipeline():
-    try:
-        # Run the background task using subprocess
-        subprocess.run(
-            ["python", "-m", "project.data.weekly_pipeline"], 
-            capture_output=True, text=True, check=True
-        )
-        # Return success response
-        return jsonify({"status": "success", "message": "Weekly pipeline executed successfully."}), 200
-    except subprocess.CalledProcessError as e:
-        # Return error message
-        return jsonify({"status": "error", "message": f"Error executing script: {e.stderr}"}), 500
-    except Exception as ex:
-        # Return unexpected error message
-        return jsonify({"status": "error", "message": f"Unexpected error: {str(ex)}"}), 500
-
-@server.route('/run-daily-pipeline', methods=['GET'])
-def run_daily_pipeline():
-    try:
-        # Run the background task using subprocess
-        subprocess.run(
-            ["python", "-m", "project.data.weekly_pipeline"], 
-            capture_output=True, text=True, check=True
-        )
-        # Return success response
-        return jsonify({"status": "success", "message": "Daily pipeline executed successfully."}), 200
-    except subprocess.CalledProcessError as e:
-        # Return error message
-        return jsonify({"status": "error", "message": f"Error executing script: {e.stderr}"}), 500
-    except Exception as ex:
-        # Return unexpected error message
-        return jsonify({"status": "error", "message": f"Unexpected error: {str(ex)}"}), 500
-
-@server.route('/run-hourly-pipeline', methods=['GET'])
-def run_hourly_pipeline():
-    try:
-        # Run the background task using subprocess
-        subprocess.run(
-            ["python", "-m", "project.data.hourly_pipeline"], 
-            capture_output=True, text=True, check=True
-        )
-        # Return success response
-        return jsonify({"status": "success", "message": "Hourly pipeline executed successfully."}), 200
-    except subprocess.CalledProcessError as e:
-        # Return error message
-        return jsonify({"status": "error", "message": f"Error executing script: {e.stderr}"}), 500
-    except Exception as ex:
-        # Return unexpected error message
-        return jsonify({"status": "error", "message": f"Unexpected error: {str(ex)}"}), 500
 
 if __name__ == "__main__":
-    app.run_server(debug=False)
+    app.run_server(debug=True)

@@ -2,18 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from project.config import download_from_gcs
 
-def create_stockout_scorecard(metrics_raw_data=None):
-    # Define the project root and load the data
-    if metrics_raw_data is None:
-        blob_name = 'query_result/metrics_raw_data.csv'
-        metrics_raw_data_file = download_from_gcs(blob_name)
-        metrics_raw_data = pd.read_csv(metrics_raw_data_file)
-
-    # Calculate Stockout Ratio per Year-Quarter
-    stockout_ratio = metrics_raw_data.groupby('Year_Quarter', as_index=False).agg({'Daily_Sales':'sum', 'Lost_Sales':'sum'})
-    stockout_ratio['stockout_ratio'] = (stockout_ratio['Lost_Sales'] / (stockout_ratio['Lost_Sales'] + stockout_ratio['Daily_Sales'])) * 100
-    stockout_ratio.drop(columns=['Daily_Sales', 'Lost_Sales'], inplace=True)
-
+def create_stockout_scorecard(stockout_ratio):
     # Calculate Current
     stockout_yr_q = sorted(stockout_ratio['Year_Quarter'].unique())
     latest_stockout_ratio = stockout_ratio[stockout_ratio['Year_Quarter'] == stockout_ratio['Year_Quarter'].max()]['stockout_ratio'].values[0]
@@ -25,45 +14,55 @@ def create_stockout_scorecard(metrics_raw_data=None):
     fig.add_trace(go.Indicator(
         mode='number+delta',
         value=latest_stockout_ratio,
-        number={'suffix': '%'},
+        number={
+            'suffix': '%',
+            'font': {'color': 'whitesmoke'}            
+            },
         delta={
             'position': 'bottom', 
             'reference': latestmin1_stockout_ratio,
             'relative': True,
             'valueformat':'.1%',
-            'decreasing': {'color': 'green'},
-            'increasing': {'color': 'red'},
+            'decreasing': {'color': '#34ad82'},
+            'increasing': {'color': 'rgba(255, 80, 80, 0.9)'},
         },
         domain={'x': [0, 1], 'y': [0, 1]}
     ))
 
     fig.update_layout(
-        template='plotly_white',
-        title={
-            'text': 'Stockout Ratio (Current Quarter)',
-            'font':{'size':14},
-            'x':0.5,
-            'xanchor':'center',
-            },
-        height=180,
-        width=320,
-        margin=dict(l=40, r=40, t=40, b=40),
+        height=50,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)'     
     )
 
     return fig
 
-def create_stockout_linechart(metrics_raw_data=None):
-    # Define the project root and load the data
-    if metrics_raw_data is None:
-        blob_name = 'query_result/metrics_raw_data.csv'
-        metrics_raw_data_file = download_from_gcs(blob_name)
-        metrics_raw_data = pd.read_csv(metrics_raw_data_file)
+def create_stockout_sparkline(stockout_ratio):
+    fig = go.Figure()
 
-    # Calculate Stockout Ratio per Year-Quarter
-    stockout_ratio = metrics_raw_data.groupby('Year_Quarter', as_index=False).agg({'Daily_Sales':'sum', 'Lost_Sales':'sum'})
-    stockout_ratio['stockout_ratio'] = (stockout_ratio['Lost_Sales'] / (stockout_ratio['Lost_Sales'] + stockout_ratio['Daily_Sales'])) * 100
-    stockout_ratio.drop(columns=['Daily_Sales', 'Lost_Sales'], inplace=True)
+    fig.add_trace(go.Scatter(
+        x=stockout_ratio['Year_Quarter'],
+        y=stockout_ratio['stockout_ratio'],
+        mode='lines',
+        line=dict(color='rgba(119, 205, 255, 1)', width=2),
+        fill='tozeroy',
+        hoverinfo='skip'
+    ))
 
+    fig.update_layout(
+        margin=dict(t=10, b=10, l=0, r=0),
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        height=50,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        dragmode=False
+    )
+
+    return fig
+
+def create_stockout_linechart(stockout_ratio):
     # Create the area chart figure
     fig = go.Figure()
 
@@ -73,75 +72,31 @@ def create_stockout_linechart(metrics_raw_data=None):
         mode='lines+markers+text',
         text=stockout_ratio['stockout_ratio'].apply(lambda x: f'{x:.1f}%'),
         textposition='bottom center',
-        textfont=dict(size=9.5),
+        textfont=dict(
+            color='whitesmoke',
+            size=10
+        ),
+        cliponaxis=False,
         name='Stockout Ratio',
         line=dict(color='royalblue'),
         fill='tozeroy'
     ))
 
     fig.update_layout(
-        title={
-            'text':'Stockout Ratio by Year-Quarter',
-            'font':{'size':14},
-            'x':0.5,
-            'xanchor':'center',           
-            },
         xaxis={
-            'tickfont':{'size':13}
+            'tickfont':{'size':10, 'color': 'whitesmoke'},
+            'automargin':True,
+            'gridcolor': 'rgba(255, 255, 255, 0.2)',
+            'gridwidth': 0.5
         },
         yaxis = {
-            'tickfont':{'size':13},
+            'visible':False,
         },
-        template='plotly_white',
-        height=250,
-        width=500,
-        margin=dict(l=40, r=40, t=40, b=40),
-    )
-
-    return fig
-
-def create_stockout_barchart(metrics_raw_data=None):
-    # Define the project root and load the data
-    if metrics_raw_data is None:
-        blob_name = 'query_result/metrics_raw_data.csv'
-        metrics_raw_data_file = download_from_gcs(blob_name)
-        metrics_raw_data = pd.read_csv(metrics_raw_data_file)
-
-    # Calculate Stockout Ratio per Year-Quarter
-    stockout_ratio = metrics_raw_data[metrics_raw_data['Year_Quarter']==metrics_raw_data['Year_Quarter'].max()]
-    stockout_ratio = stockout_ratio.groupby('Product_ID', as_index=False).agg({'Daily_Sales':'sum', 'Lost_Sales':'sum'})
-    stockout_ratio['stockout_ratio'] = (stockout_ratio['Lost_Sales'] / (stockout_ratio['Lost_Sales'] + stockout_ratio['Daily_Sales'])) * 100
-    stockout_ratio.drop(columns=['Daily_Sales', 'Lost_Sales'], inplace=True)
-    stockout_ratio = stockout_ratio.nlargest(5, 'stockout_ratio')
-
-    # Create the bar chart figure
-    fig = go.Figure()
-
-    fig.add_trace(go.Bar(
-        x=stockout_ratio['Product_ID'],
-        y=stockout_ratio['stockout_ratio'],
-        text=stockout_ratio['stockout_ratio'].apply(lambda x: f'{x:.1f}%'),
-        textposition='auto',
-        marker=dict(color='royalblue', line=dict(color='royalblue', width=1.5))
-    ))
-
-    fig.update_layout(
-        title={
-            'text':'Top 5 Stockout Ratio Product',
-            'font':{'size':14},
-            'x':0.5,
-            'xanchor':'center',
-            },
-        xaxis={
-            'tickfont':{'size':13}
-        },
-        yaxis = {
-            'tickfont':{'size':13},
-        },
-        template='plotly_white',
-        height=250,
-        width=500,
-        margin=dict(l=40, r=40, t=40, b=40),
+        height=220,
+        width=400,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)'   
     )
 
     return fig

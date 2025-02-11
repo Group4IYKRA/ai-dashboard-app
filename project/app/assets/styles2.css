@@ -1,0 +1,115 @@
+@font-face {
+    font-family: 'Poppins';
+    src: url('./fonts/poppins/Poppins-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* custom-styles.css */
+.body-container {
+    background-color: #3A3D43 !important;
+    font-family: 'Poppins' !important; 
+}
+
+/* header-container */
+.header-container {
+    background-color: #406abd !important;
+    font-family: 'Poppins' !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1000 !important;
+}
+
+/* title-and-logo container */
+.title-and-logo {
+    height: 8vh;
+    margin-top: 10px;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1000 !important;
+}
+
+/* All dropdown */
+.Select {  
+    border-radius: 10px !important;                                           
+}
+/* title-and-logo container */
+h1, h4 {
+    text-shadow: none !important;
+    color: whitesmoke;
+}
+
+/* logo-iykra*/
+.logo-iykra {
+    width: auto;
+    height: 5vh;
+    padding: 0;
+    margin: 0;
+}
+
+/* logo-iykra*/
+.logo-ai {
+    width: auto;
+    height: 8vh;
+    padding: 0;
+    margin: 0;
+}
+
+/* filter */
+.filter {
+    font-size: 11px !important;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    margin-right: 10px;
+    padding: 0;
+}
+
+/* card */
+.card {
+    border-radius: 10px !important;
+    background-color: #585454 !important;
+    color: whitesmoke;
+    margin-right: 0px !important;
+    margin-left: 0px !important;
+    padding-left: 0px !important;
+    padding-right: 0px !important;
+}
+
+/* card-body */
+.card-body {
+    padding: 0px;
+    margin: 0px;
+}
+
+/* metric card */
+.metric-column1 {
+    padding: 0px;
+    margin-right: 0px;
+    background-color: transparent;
+}
+.metric-column2 {
+    padding: 0px;
+    margin: 0px;
+    background-color: transparent;
+}
+
+/* button */
+.button {
+    border-radius: 10px;
+    font-family: 'Poppins' !important;
+    font-size: 14px !important;
+}
+
+/* Edit table*/
+/* General Table Styling */
+.custom-grid .ag-theme-quartz {
+    font-size: 11px !important;
+}
+
+.ag-cell {
+    white-space: normal !important;  
+    font-size: 12px !important;      
+    line-height: 1.0;                 
+    word-wrap: break-word !important;            
+}
