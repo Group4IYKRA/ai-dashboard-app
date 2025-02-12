@@ -52,15 +52,16 @@ def retrieve(user_input, top_k=5):
 def chatbox():
     return dbc.Container([
         # Area chat dengan scroll
-        html.Div([
-            html.H2("Chatbot"),
-        ], style={
-            'backgroundColor': '#007BFF',
-            'border': '1px solid #ddd', 
-            'borderRadius': '10px',
-            'color': 'white',
-            'textAlign': 'center'}
-            ),
+        # html.Div([
+        #     html.H4("Chatbot"),
+        # ], style={
+        #     'backgroundColor': '#406abd',
+        #     'border': '1px solid #ddd', 
+        #     'borderRadius': '10px',
+        #     'color': 'whitesmoke',
+        #     'textAlign': 'center',
+        #     'fontFamily': 'Poppins'}
+        #     ),
         #dcc.Store(id="chat-history", storage_type="session"),
         dcc.Store(id="chat-history", data=global_chat_histories),
         dbc.Row([
@@ -68,12 +69,12 @@ def chatbox():
                 html.Div([
                     html.Div(id='chat-box'),
                     html.Div(id="streaming-process", style={
-                                                        'backgroundColor': '#f1f1f1', 'color': 'black', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
-                                                        'alignSelf': 'flex-start', 'maxWidth': '80%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Helvetica', 
-                                                        'textAlign': 'left', 'margin-left': '5px'}),
+                                                        'backgroundColor': '#30343c', 'color': 'whitesmoke', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
+                                                        'alignSelf': 'flex-start', 'maxWidth': '99%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Poppins', 
+                                                        'textAlign': 'left', 'margin-left': '5px', 'font-size':12}),
                 ], style={
-                        'height': '250px', 'overflowY': 'scroll', 'border': '1px solid #ddd', 'padding': '10px', 'borderRadius': '10px',
-                        'backgroundColor': '#f9f9f9', 'marginBottom': '20px'}),
+                        'height': '300px', 'overflowY': 'scroll', 'border': '1px solid #ddd', 'padding': '10px', 'borderRadius': '10px',
+                        'backgroundColor': '#30343c', 'marginBottom': '20px', 'font-size':12}),
                 html.Div(id="notification_wrapper"),
                 DashSocketIO(id='socketio', eventNames=["notification", "stream"]),
             ]),
@@ -88,14 +89,16 @@ def chatbox():
                       'produk apa yang harus saya restock berdasarkan musim yang sedang berjalan?'
                   ]), 
                   style={
-            'width' : '95%', 'padding': '10px', 'borderRadius': '5px', 'border': '1px solid #ddd'
+            'width' : '99%', 'padding': '10px', 'borderRadius': '5px', 'border': '1px solid #ddd', 'background-color': '#30343c', 'color':'whitesmoke', 'font-size':12
         }),
         # Tombol kirim pesan
-        html.Button('Send', id='send-button', n_clicks=0, style={
-            'padding': '10px 20px', 'backgroundColor': '#007bff', 'border': 'none', 'color': 'white', 'borderRadius': '5px'
+        html.Div([
+            html.Button('Send', id='send-button', n_clicks=0, style={
+                'padding-left': '10px', 'padding-right': '10px','backgroundColor': '#007bff', 'border': 'none', 'color': 'white', 'borderRadius': '5px', 'height':'30px',
         }),
-    ], style={'width': '400px', 'margin': '0 auto', 'padding': '10px', 'border': '1px solid #ddd', 'borderRadius': '10px', 'fontFamily': 'Helvetica', 'marginTop': '10px',
-              "boxShadow": "0px 4px 6px rgba(0,0,0,0.1)", 'backgroundColor': '#f9f9f9'})
+        ], style={'display': 'flex','justifyContent': 'flex-end'}),
+    ], style={'width': '400px', 'margin': '0 auto', 'padding': '10px', 'border': '1px solid #ddd', 'borderRadius': '10px', 'fontFamily': 'Poppins', 'marginTop': '10px',
+              "boxShadow": "0px 4px 6px rgba(0,0,0,0.1)", 'backgroundColor': '#202c34', 'font-size':12})
 
 
 clientside_callback(

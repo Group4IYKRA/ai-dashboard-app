@@ -8,6 +8,7 @@
 
 /* custom-styles.css */
 .body-container {
+    min-height: 100vh;
     background-color: #3A3D43 !important;
     font-family: 'Poppins' !important; 
 }
@@ -66,7 +67,7 @@
 }
 
 /* title-and-logo container */
-h1, h4 {
+h1, h4, h6 {
     text-shadow: none !important;
     color: whitesmoke;
 }
@@ -89,7 +90,7 @@ h1, h4 {
 /* card */
 .card {
     border-radius: 10px !important;
-    background-color: #585454 !important;
+    background-color: #202c34 !important;
     color: whitesmoke;
     margin-right: 0px !important;
     margin-left: 0px !important;
@@ -107,6 +108,7 @@ h1, h4 {
 .card-body {
     padding: 0px;
     margin: 0px;
+    background-color: #30343c !important;
 }
 
 /* metric card */
@@ -140,29 +142,34 @@ h1, h4 {
 
 .sort-dropdown .Select-control {    
     font-size: 15px;
-    background-color: #585454 !important;
+    background-color: #202c34 !important;
     color: whitesmoke !important;   
     border: none !important;
 }
 
 .sort-dropdown .VirtualizedSelectOption {
     font-size: 11px;
-    background-color: #585454;    
+    background-color: #202c34;    
     color: whitesmoke;       
 
 }
 
 /* barpolar chart */
+.barpolar-card {
+    height: 420 !important;
+}
+
 .barpolar-card-body {
     margin: 0px !important;
-    padding: 0px !important;
+    padding-right: 0px!important;
+    padding-left: 0px !important;
 }
 
 .barpolar-chart {
-    height: 450px;
-    margin: 0px;
-    padding: 0px;
-    padding-left: 10px;
+    height: 320px !important;
+    margin: 0px !important;
+    padding: 0px !important;
+    padding-left: 0px !important;
 }
 
 /* button */
@@ -174,13 +181,26 @@ h1, h4 {
 
 /* Edit table*/
 /* General Table Styling */
-.custom-grid .ag-theme-quartz {
-    font-size: 11px !important;
+.ag-theme-quartz-dark .ag-cell{
+    font-size: 12px !important;
+    /* background-color: #202c34 !important;
+    color: whitesmoke !important; */
 }
-
-.ag-cell {
-    white-space: normal !important;  
-    font-size: 12px !important;      
-    line-height: 1.0;                 
-    word-wrap: break-word !important;            
+/* .ag-theme-quartz.table .ag-header-cell {
+    background-color: #1E1F22;    
+    color: #f5f5f5;                                       
+    padding: 10px;
 }
+.ag-theme-quartz .ag-center-cols-container .ag-cell:not(:nth-child(1)),
+.ag-theme-quartz .ag-header-cell:not(:nth-child(1)) {
+    min-width: 120px;
+    max-width: 120px;
+    width: 120px;
+    background-color: #2E2E38;   
+    color: #FFFFFF;             
+}
+/* Add hover effect */
+.ag-theme-quartz .ag-row-hover {
+    background-color: #4A4D52 !important;
+    color: #ffffff;
+} */

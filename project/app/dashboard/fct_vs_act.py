@@ -40,7 +40,7 @@ def create_fct_vs_act_linechart(fct_vs_act):
         xaxis={
             'tickfont':{'size':10, 'color': 'whitesmoke'},
             'automargin':True,
-            'gridcolor': 'rgba(255, 255, 255, 0.2)',
+            'gridcolor': 'rgba(255, 255, 255, 0)',
             'gridwidth': 0.5
         },
         yaxis = {

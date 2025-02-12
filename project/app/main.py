@@ -12,6 +12,8 @@ import os
 from flask_socketio import SocketIO
 from sklearn.preprocessing import MinMaxScaler
 import threading
+from concurrent.futures import ProcessPoolExecutor
+import dask.dataframe as dd
 
 # Get all necessary dfs
 current_dir = os.getcwd()
@@ -101,55 +103,40 @@ def preprocess_itr(metrics_raw_data):
 
 # Preprocessing for barpolar
 @cache.memoize(timeout=600)
-def preprocess_barpolar(metrics_raw_data):
-    def calculate_inventory_turnover_ratio(metrics_raw_data: pd.DataFrame, target_quarter: str):
+def preprocess_barpolar(metrics_raw_data, target_quarter='2024-Q4'):
+    ddf = dd.from_pandas(metrics_raw_data, npartitions=4)
+    ddf = ddf[ddf['Year_Quarter']==target_quarter]
+    
+    def calculate_inventory_turnover_ratio(ddf: dd.DataFrame):
         # Group by quarter and product to get sales and date ranges
-        inventory_metrics = metrics_raw_data.groupby(
-            ['Year_Quarter', 'Product_ID'], 
-            as_index=False
+        inventory_metrics = ddf.sort_values(by='Date').groupby(
+            ['Year_Quarter', 'Product_ID'],
         ).agg({
             'Date': ['min', 'max'],
-            'Daily_Sales': 'sum'
-        })
+            'Daily_Sales': 'sum',
+            'Stock_Level': ['first', 'last'],
+        }).reset_index().compute()
         
         # Clean up column names
         inventory_metrics.columns = ['_'.join(col).strip() if col[1] else col[0] 
                                 for col in inventory_metrics.columns.values]
         
-        # Filter for target quarter
-        inventory_metrics = inventory_metrics[inventory_metrics['Year_Quarter'] == target_quarter]
-        
-        # Calculate stock levels for start and end dates
-        stock_levels = {}
-        for date_type in ['min', 'max']:
-            stock_levels[date_type] = {
-                prod: metrics_raw_data[
-                    (metrics_raw_data['Product_ID'] == prod) & 
-                    (metrics_raw_data['Date'].isin(inventory_metrics[f'Date_{date_type}']))
-                ]['Stock_Level'].sum()
-                for prod in inventory_metrics['Product_ID'].unique()
-            }
-        
-        # Add stock levels to dataframe
-        inventory_metrics['Earliest_Stock_Sum'] = inventory_metrics['Product_ID'].map(stock_levels['min'])
-        inventory_metrics['Latest_Stock_Sum'] = inventory_metrics['Product_ID'].map(stock_levels['max'])
         
         # Calculate ITR
         inventory_metrics['ITR'] = (
             inventory_metrics['Daily_Sales_sum'] / 
-            ((inventory_metrics['Latest_Stock_Sum'] + inventory_metrics['Earliest_Stock_Sum']) / 2)
+            ((inventory_metrics['Stock_Level_last'] + inventory_metrics['Stock_Level_first']) / 2)
         ).round(2)
         
         return inventory_metrics[['Year_Quarter', 'Product_ID', 'ITR']]
 
-    def calculate_stockout_ratio(metrics_raw_data: pd.DataFrame, target_quarter: str):
-        stockout_metrics = metrics_raw_data.groupby(
+    def calculate_stockout_ratio(ddf: dd.DataFrame):
+        stockout_metrics = ddf.groupby(
             ['Year_Quarter', 'Product_ID'], 
-            as_index=False
         ).agg({
             'Daily_Sales': 'sum',
             'Lost_Sales': 'sum'
-        })
+        }).reset_index().compute()
         
         stockout_metrics = stockout_metrics[stockout_metrics['Year_Quarter'] == target_quarter]
         
@@ -160,18 +147,15 @@ def preprocess_barpolar(metrics_raw_data):
         
         return stockout_metrics[['Year_Quarter', 'Product_ID', 'stockout_ratio']]
 
-    def calculate_overstock_cost(metrics_raw_data: pd.DataFrame, target_quarter: str):
-        quarterly_data = metrics_raw_data[metrics_raw_data['Year_Quarter'] == target_quarter]
-        
+    def calculate_overstock_cost(ddf: dd.DataFrame):       
         # Calculate daily metrics
-        daily_metrics = quarterly_data.groupby(
+        daily_metrics = ddf.groupby(
             ['Year_Quarter', 'Product_ID', 'Date'], 
-            as_index=False
         ).agg({
             'Daily_Sales': 'sum',
             'Stock_Level': 'sum',
             'Inventory_Holding_Cost': 'mean'
-        })
+        }).reset_index().compute()
         
         # Calculate final metrics
         overstock_metrics = (
@@ -192,10 +176,9 @@ def preprocess_barpolar(metrics_raw_data):
         
         return overstock_metrics[['Year_Quarter', 'Product_ID', 'overstock_cost']]
     
-    target_quarter = '2024-Q4'
-    itr_df = calculate_inventory_turnover_ratio(metrics_raw_data, target_quarter)
-    stockout_df = calculate_stockout_ratio(metrics_raw_data, target_quarter)
-    overstock_df = calculate_overstock_cost(metrics_raw_data, target_quarter)
+    itr_df = calculate_inventory_turnover_ratio(ddf)
+    stockout_df = calculate_stockout_ratio(ddf)
+    overstock_df = calculate_overstock_cost(ddf)
     
     # Combine all metrics
     combined_metrics = (
@@ -408,10 +391,26 @@ app.layout = dbc.Container(
                         figure=create_barpolar_top_10(barpolar),
                         config={'displayModeBar': False}
                         ),
-                    ]
-
+                    ]),
+            ]),
+            html.Br(),
+            html.Div(
+            className='text-nowrap mb-0 open-table-div',
+            children=[
+                html.H6('Open table: ', className='text-nowrap mb-0'),
+                dbc.Button(
+                "Current Stock Monitor",
+                id="open_stock",
+                class_name="button bottom-button",
+                n_clicks=0,
                 ),
-            ],
+                dbc.Button(
+                "Stock Optimization Plan",
+                id="open_optim",
+                class_name="button bottom-button",
+                n_clicks=0,
+                ), 
+            ],style={'display': 'flex', 'justify-content': 'flex-start', 'align-items': 'center', 'gap': '20px'}, 
             ),
         ]),
         dbc.Col(
@@ -499,46 +498,15 @@ app.layout = dbc.Container(
                     ]),
                 ]),
             ]),
-            html.Br(),
-            dbc.Card(
-            class_name='open-table-card card',
-            children=[
-                dbc.CardBody(
-                class_name='open-table-card-body card-body',
-                children=[
-                    html.Div(
-                    className='text-nowrap mb-0',
-                    children=[
-                        dbc.Col(html.H6('Open table:'), width=3),
-                        dbc.Button(
-                        "Current Stock Monitor",
-                        id="open_stock",
-                        class_name="button bottom-button",
-                        n_clicks=0,
-                        style={"margin": "0"}
-                        ),
-                        dbc.Button(
-                        "Stock Optimization Plan",
-                        id="open_optim",
-                        class_name="button bottom-button",
-                        n_clicks=0,
-                        style={"margin": "0"}
-                        ), 
-                    ]
-                    )
-                ]
-                )
-                ]
-            ),
-        ])
+        ]),
     ]),
     html.Div([
     # Tombol untuk membuka/meminimalkan chatbot
         html.Div(
             html.Button("💬 Chat", id="toggle-chat", style={"borderRadius": "10px", "width": "60px", "height": "60px", "backgroundColor": "#007BFF", "color": "white"}),
-            style={"position": "fixed", "bottom": "35px", "right": "20px", "zIndex": "1000"}
+            style={"position": "fixed", "bottom": "20px", "right": "20px", "zIndex": "1000"}
         ),
-        html.Div(id="chat-window", children = chatbox(),style={'display': 'none',"bottom": "105px", "right": "20px", "position": "fixed", "zIndex": "1000", "fontsize" : "14", "width":"400px"}),
+        html.Div(id="chat-window", children = chatbox(),style={'display': 'none',"bottom": "105px", "right": "20px", "position": "fixed", "zIndex": "1000", 'font-size':12, "width":"400px"}),
     ]),
     dbc.Collapse(
         id='stock-pivot-collapse',
@@ -570,6 +538,14 @@ app.layout = dbc.Container(
             create_stock_optim(optim_df)
         ]
     ),
+    dbc.Row([
+        dbc.Col([
+            html.H6("Created with 🪄✨ by Group 4: Biyan & Andra", style={'margin':'10px'}),
+            html.A(html.Img(src='assets/github_blue.png', style={'height': '32px'}), 
+                href="https://github.com/Group4IYKRA/ai-dashboard-app/tree/offline-version",
+                target="_blank")                      
+            ], width=12, style={'padding': '20px',  'display': 'flex', 'justify-content': 'center',}),  
+        ])
 ])
 
 # Callback to update_charts
@@ -594,9 +570,9 @@ def update_charts(selected_product_ids,
                   selected_from_warehouse, 
                   selected_to_warehouse,
                   selected_sort_option):
-    
-    global metrics_raw_data
+
     filtered_metrics = metrics_raw_data.copy()
+
     if selected_product_ids or selected_from_warehouse or selected_to_warehouse:
         selected_from = selected_from_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
         selected_to = selected_to_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
@@ -609,15 +585,21 @@ def update_charts(selected_product_ids,
         selected_products = selected_product_ids or filtered_metrics['Product_ID'].unique()
         filtered_metrics = filtered_metrics[filtered_metrics['Product_ID'].isin(selected_products)]
         barpolar_data = barpolar_data[barpolar_data['Product_ID'].isin(selected_products)]
-    else:
-        barpolar_data = normalize_barpolar(preprocess_barpolar(filtered_metrics))
 
-    stockout_data = preprocess_stockout(filtered_metrics)
-    itr_data = preprocess_itr(filtered_metrics)
-    overstock_data = preprocess_overstock(filtered_metrics)
+    with ProcessPoolExecutor() as executor:
+        futures = {
+            'stockout_data': executor.submit(preprocess_stockout, filtered_metrics),
+            'itr_data': executor.submit(preprocess_itr, filtered_metrics),
+            'overstock_data': executor.submit(preprocess_overstock, filtered_metrics),
+            'forecast_data': executor.submit(preprocess_fct_vs_act, filtered_metrics),
+        }
+
+    stockout_data = futures['stockout_data'].result()
+    itr_data = futures['itr_data'].result()
+    overstock_data = futures['overstock_data'].result()
     barpolar_data = normalize_barpolar(preprocess_barpolar(filtered_metrics))
-    forecast_data = preprocess_fct_vs_act(filtered_metrics)             
-
+    forecast_data = futures['forecast_data'].result()
+    
     return [
         create_stockout_scorecard(stockout_data),
         create_stockout_sparkline(stockout_data),
@@ -691,7 +673,7 @@ def update_tables(selected_product_ids,
     return filtered_pivot.to_dict('records'), filtered_pivot_col, filtered_optim.to_dict('records')
 
 # Save as csv
-@callback(
+@app.callback(
     Output("stock_pivot", "exportDataAsCsv"),
     Input("save-button-stock-pivot", "n_clicks"),
 )
@@ -700,7 +682,7 @@ def export_stock_pivot_as_csv(n_clicks):
         return True
     return False
 
-@callback(
+@app.callback(
     Output("stock_optimization", "exportDataAsCsv"),
     Input("save-button-stock-optim", "n_clicks"),
 )
@@ -796,8 +778,8 @@ def response_chatbot(user_input, socket_id):
         "role": "bot",
         "content": bot_response,
         "style":{
-            'backgroundColor': '#f1f1f1', 'color': 'black', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
-            'alignSelf': 'flex-start', 'maxWidth': '80%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Helvetica', 'textAlign': 'left', 'margin-left': '5px'
+            'backgroundColor': '#30343c', 'color': 'whitesmoke', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
+            'alignSelf': 'flex-start', 'maxWidth': '99%', 'margin-right': 'auto', 'whiteSpace': 'pre-wrap', 'fontFamily': 'Poppins', 'textAlign': 'left', 'margin-left': '5px'
         }
     }
     # Perbarui chat_history
@@ -830,13 +812,13 @@ def update_chatbot_output(n_clicks, user_input, chat_history, socket_id):
     if chat_history is None:
         chat_history = []
     
-        # Pesan dari pengguna
+    # Pesan dari pengguna
     user_message = {
         "role": "user",
         "content": user_input,
         "style":{
-            'backgroundColor': '#007bff', 'color': 'white', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
-            'alignSelf': 'flex-end', 'maxWidth': '80%', 'margin-left': 'auto', 'fontFamily': 'Helvetica', 'width' : 'fit-content', 'margin-right': '5px'
+            'backgroundColor': '#202c34', 'color': 'white', 'padding': '8px', 'borderRadius': '10px', 'marginBottom': '5px',
+            'alignSelf': 'flex-end', 'maxWidth': '80%', 'margin-left': 'auto', 'fontFamily': 'Poppins', 'width' : 'fit-content', 'margin-right': '5px'
         }
     }
 
@@ -852,4 +834,4 @@ def update_chatbot_output(n_clicks, user_input, chat_history, socket_id):
     return chat_elements, chat_history, "", []
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=False)

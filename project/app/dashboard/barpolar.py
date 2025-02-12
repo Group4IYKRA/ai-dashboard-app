@@ -19,17 +19,25 @@ def create_barpolar_top_10(df, sort_by='Overstock Cost'):
     fig = go.Figure()
 
     # Evenly spaced angles within 0 to 90 degrees
-    theta = np.arange(len(df)) * (360 / len(df))
-    n = -12
+    theta = np.arange(len(df)) * (180 / len(df))
+    n = -6
 
     for col, mc in marker_color_map.items():
         annotation_col = {'ITR_norm': 'ITR', 'stockout_ratio_norm': 'Stockout Ratio', 'overstock_cost_norm': 'Overstock Cost'}[col]
         fig.add_barpolar(
             r=df[col],
             theta=theta + n,
-            width=12,
+            width=6,
             customdata=list(zip(df[[annotation_col, base_col]].values, [annotation_col] * len(df))),
-            hovertemplate='<b>%{customdata[0][1]}</b><br>%{customdata[1]}: %{customdata[0][0]}<br><extra></extra>',
+            hovertemplate = (
+                '<b>%{customdata[0][1]}</b><br>'
+                '%{customdata[1]}: %{customdata[0][0]:,}<br>'
+                '<extra></extra>'
+                if col != 'overstock_cost_norm' else 
+                '<b>%{customdata[0][1]}</b><br>'
+                '%{customdata[1]}: %{customdata[0][0]:,}<br>'
+                '<extra></extra>'
+            ),
             name=annotation_col, 
             opacity=1, 
             marker=dict(
@@ -41,15 +49,15 @@ def create_barpolar_top_10(df, sort_by='Overstock Cost'):
             ),
             marker_color=mc,
         )
-        n+=12
+        n+=6
 
     # Update layout
     fig.update_layout(
-        height=400, 
-        margin=dict(l=0, r=0, t=0, b=0),
+        height=320,
+        margin=dict(l=5, r=0, t=0, b=0),
         template=None, font_size=12,
-        paper_bgcolor='#585454',
-        plot_bgcolor='#585454',
+        paper_bgcolor='#30343c',
+        plot_bgcolor='#30343c',
         font_color='whitesmoke',
     legend=dict(
         orientation='h',     
@@ -63,14 +71,14 @@ def create_barpolar_top_10(df, sort_by='Overstock Cost'):
             font=dict(size=12),
         ),
         font_color='whitesmoke',
-        itemclick='toggleothers',
-        itemdoubleclick='toggle',
+        itemclick='toggle',
+        itemdoubleclick='toggleothers',
         valign='middle'
     ),
     polar=dict(
-            sector=[0, 360],
-            bgcolor='#585454',
-            domain=dict(x=[0,1], y=[0, 1]),
+            sector=[0, 180],
+            bgcolor='#30343c',
+            domain=dict(x=[0.1,0.85], y=[0, 1]),
             radialaxis=dict(
                 showline=False,
                 showticklabels=False, 
@@ -81,7 +89,7 @@ def create_barpolar_top_10(df, sort_by='Overstock Cost'):
                 showline=False,
                 showticklabels=True,
                 ticks='',
-                rotation=86.5,
+                rotation=170,
                 direction="clockwise",
                 tickvals=theta,
                 ticktext=df['Product_ID'],

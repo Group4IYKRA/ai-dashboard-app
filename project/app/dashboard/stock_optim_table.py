@@ -10,7 +10,7 @@ def create_stock_optim(optim_df=None):
         rowData=optim_df.to_dict('records'),
         columnDefs=columnDefs,
         columnSize="responsiveSizeToFit",
-        className="ag-theme-quartz",
+        className="ag-theme-quartz-dark",
         defaultColDef={
             "filter": "agTextColumnFilter",
             "tooltipComponent": "CustomTooltipSimple",

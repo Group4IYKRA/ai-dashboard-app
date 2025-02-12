@@ -45,7 +45,7 @@ def create_stockout_sparkline(stockout_ratio):
         x=stockout_ratio['Year_Quarter'],
         y=stockout_ratio['stockout_ratio'],
         mode='lines',
-        line=dict(color='rgba(119, 205, 255, 1)', width=2),
+        line=dict(color='#87A2FF', width=2),
         fill='tozeroy',
         hoverinfo='skip'
     ))
@@ -98,7 +98,7 @@ def create_stockout_linechart(stockout_ratio):
             'ticktext': stockout_ratio['Year_Quarter'].map(quarter_mapping),
             'tickfont':{'size':10, 'color': 'whitesmoke'},
             'automargin':True,
-            'gridcolor': 'rgba(255, 255, 255, 0.2)',
+            'gridcolor': 'rgba(255, 255, 255, 0)',
             'gridwidth': 0.5
         },
         yaxis = {

@@ -98,8 +98,8 @@ def create_overstock_cost_linechart(overstock_cost):
             'ticktext': overstock_cost['Year_Quarter'].map(quarter_mapping),           
             'tickfont':{'size':10, 'color': 'whitesmoke'},
             'automargin':True,
-            'gridcolor': 'rgba(255, 255, 255, 0.2)',
-            'gridwidth': 0.5
+            'gridcolor': 'rgba(255, 255, 255, 0)',
+            'gridwidth': 0.5,
         },
         yaxis = {
             'visible':False,

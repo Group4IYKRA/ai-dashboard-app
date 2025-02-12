@@ -71,7 +71,7 @@ def create_itr_linechart(itr):
         '2024-Q3': 'Q3-24',
         '2024-Q4': 'Q4-24'
     }
-    
+
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -96,7 +96,7 @@ def create_itr_linechart(itr):
             'ticktext': itr['Year_Quarter'].map(quarter_mapping),
             'tickfont':{'size':10, 'color': 'whitesmoke'},
             'automargin':True,
-            'gridcolor': 'rgba(255, 255, 255, 0.2)',
+            'gridcolor': 'rgba(255, 255, 255, 0)',
             'gridwidth': 0.5
         },
         yaxis = {
