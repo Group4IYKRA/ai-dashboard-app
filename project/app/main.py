@@ -40,7 +40,6 @@ metrics_raw_data = pd.read_csv(os.path.join(processed_dir, 'metrics_raw_data.csv
 
 # ----------------------Cache intermediate dataframe----------------------
 app = Dash(__name__, external_stylesheets=[dbc.themes.LUMEN, "/assets/styles2.css"])
-server = app.server
 cache = Cache(app.server, config={'CACHE_TYPE': 'simple'})
 socketio = SocketIO(app.server)
 
@@ -209,6 +208,14 @@ def preprocess_barpolar(metrics_raw_data):
     
     return combined_metrics
 
+# Normalize barpolar metric for better visualization
+def normalize_barpolar(barpolar):
+    barpolar['ITR_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['ITR']])
+    barpolar['stockout_ratio_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['Stockout Ratio']])
+    barpolar['overstock_cost_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['Overstock Cost']])
+
+    return barpolar
+
 # Preprocessing forecast vs actual
 def preprocess_fct_vs_act(metrics_raw_data):
     d_min30 = sorted(metrics_raw_data['Date'].unique().tolist())[-30:]
@@ -221,22 +228,8 @@ def preprocess_fct_vs_act(metrics_raw_data):
 overstock_cost = preprocess_overstock(metrics_raw_data)
 stockout_ratio = preprocess_stockout(metrics_raw_data)
 itr = preprocess_itr(metrics_raw_data)
-barpolar = preprocess_barpolar(metrics_raw_data)
+barpolar = normalize_barpolar(preprocess_barpolar(metrics_raw_data))
 fct_vs_act = preprocess_fct_vs_act(metrics_raw_data)
-
-# Normalize barpolar metric for better visualization
-ITR_scaler = MinMaxScaler().fit(barpolar[['ITR']])
-stockout_scaler = MinMaxScaler().fit(barpolar[['Stockout Ratio']])
-overstock_scaler = MinMaxScaler().fit(barpolar[['Overstock Cost']])
-
-def normalize_barpolar(barpolar):
-    barpolar['ITR_norm'] = ITR_scaler.transform(barpolar[['ITR']])
-    barpolar['stockout_ratio_norm'] = stockout_scaler.transform(barpolar[['Stockout Ratio']])
-    barpolar['overstock_cost_norm'] = overstock_scaler.transform(barpolar[['Overstock Cost']])
-
-    return barpolar
-
-barpolar = normalize_barpolar(barpolar)
 
 # ----------------------Dashboard Layout----------------------
 app.layout = dbc.Container(
@@ -262,7 +255,7 @@ app.layout = dbc.Container(
         dbc.Col(
         class_name='filter product-filter',
         align='center',
-        width=dict(size=1, offset=1),
+        width=dict(size=1, offset=2),
         children=product_filter(stock_pivot),
         ),
         dbc.Col(
@@ -298,28 +291,10 @@ app.layout = dbc.Container(
                         dbc.CardBody(
                         class_name='metric-card-body',
                         children=[
-                            dbc.Row(
-                            class_name='overstock-cost-card-body card-body g-0',
-                            children=[
-                                dbc.Col(
-                                class_name='metric-column1',
-                                children=dcc.Graph(
-                                    id='overstock-cost-scorecard',
-                                    config={'displayModeBar': False},
-                                    figure=create_overstock_cost_scorecard(overstock_cost), 
-                                    ),
-                                    width=6,
-                                ),
-                                dbc.Col(
-                                class_name='metric-column2',
-                                children=dcc.Graph(
-                                    id='overstock-cost-sparkline',
-                                    figure=create_overstock_cost_sparkline(overstock_cost),
-                                    config={'displayModeBar': False, 'staticPlot':True},
-                                    ),
-                                    width=6,
-                                ),
-                            ],
+                            dcc.Graph(
+                            id='overstock-cost-scorecard',
+                            config={'displayModeBar': False},
+                            figure=create_overstock_cost_scorecard(overstock_cost), 
                             ),
                         ],
                         ),
@@ -409,30 +384,32 @@ app.layout = dbc.Container(
             class_name='barpolar-card card',
             children=[
                 dbc.CardHeader(
-                    dbc.Row(
-                    id='barpolar-sort',
-                    class_name='barpolar g-0',
-                    children=[
-                        dbc.Col('Sort by:', width=2),
-                        dbc.Col(dcc.Dropdown(
+                class_name='sort-card-header',
+                children=[
+                    dcc.Dropdown(
                         id='sort-dropdown',
+                        className='sort-dropdown',
                         options=[
-                        {'label': html.Span(['Top 10 Highest Overstock Cost Product'], style={'color': '#000000', 'font-size': 20}), 'value': 'Overstock Cost'},
-                        {'label': html.Span(['Top 10 Highest Stockout Ratio Product'], style={'color': '#000000', 'font-size': 20}), 'value': 'Stockout Ratio'},
-                        {'label': html.Span(['Top 10 Slowest Inventory Turnover Product'], style={'color': '#000000', 'font-size': 20}), 'value': 'ITR'}
+                        {'label': html.Span(['Sort by Top 10 Highest Overstock Cost Product'], style={'color': 'whitesmoke'}), 'value': 'Overstock Cost'},
+                        {'label': html.Span(['Sort by Top 10 Highest Stockout Ratio Product'], style={'color': 'whitesmoke'}), 'value': 'Stockout Ratio'},
+                        {'label': html.Span(['Sort by Top 10 Slowest Inventory Turnover Product'], style={'color': 'whitesmoke'}), 'value': 'ITR'}
                         ],
-                        style={'height':'10px', 'fontsize':'10px'},
-                        ), width=10),
-                    ],
-                    ),
+                        value='Overstock Cost',
+                        clearable=False,
+                        )
+                    ]
                 ),
                 dbc.CardBody(
-                    dcc.Graph(
-                    id='barpolar-chart',
-                    style={'height':'470px','margin':'0'},
-                    figure=create_barpolar_top_10(barpolar),
-                    config={'displayModeBar': False}
-                    ),
+                    class_name='barpolar-card-body',
+                    children=[
+                        dcc.Graph(
+                        id='barpolar-chart',
+                        className='barpolar-chart',
+                        figure=create_barpolar_top_10(barpolar),
+                        config={'displayModeBar': False}
+                        ),
+                    ]
+
                 ),
             ],
             ),
@@ -523,37 +500,43 @@ app.layout = dbc.Container(
                 ]),
             ]),
             html.Br(),
-            dbc.Row(
-                class_name='g-0',
+            dbc.Card(
+            class_name='open-table-card card',
+            children=[
+                dbc.CardBody(
+                class_name='open-table-card-body card-body',
                 children=[
-                dbc.Col(html.H4('Open table:'), width=3),
-                dbc.Col(
-                    dbc.Button(
-                    "Current Stock Monitor",
-                    id="open_stock",
-                    className="button bottom-button",
-                    n_clicks=0,
-                    style={"margin": "0"}
-                    ), width=4,  
-                ),
-                dbc.Col(
-                    dbc.Button(
-                    "Stock Optimization Plan",
-                    id="open_optim",
-                    className="button bottom-button",
-                    n_clicks=0,
-                    style={"margin": "0"}
-                    ), width=4,  
-                ),
-            ]),
-            
+                    html.Div(
+                    className='text-nowrap mb-0',
+                    children=[
+                        dbc.Col(html.H6('Open table:'), width=3),
+                        dbc.Button(
+                        "Current Stock Monitor",
+                        id="open_stock",
+                        class_name="button bottom-button",
+                        n_clicks=0,
+                        style={"margin": "0"}
+                        ),
+                        dbc.Button(
+                        "Stock Optimization Plan",
+                        id="open_optim",
+                        class_name="button bottom-button",
+                        n_clicks=0,
+                        style={"margin": "0"}
+                        ), 
+                    ]
+                    )
+                ]
+                )
+                ]
+            ),
         ])
     ]),
     html.Div([
     # Tombol untuk membuka/meminimalkan chatbot
         html.Div(
             html.Button("💬 Chat", id="toggle-chat", style={"borderRadius": "10px", "width": "60px", "height": "60px", "backgroundColor": "#007BFF", "color": "white"}),
-            style={"position": "fixed", "bottom": "35px", "right": "105px", "zIndex": "1000"}
+            style={"position": "fixed", "bottom": "35px", "right": "20px", "zIndex": "1000"}
         ),
         html.Div(id="chat-window", children = chatbox(),style={'display': 'none',"bottom": "105px", "right": "20px", "position": "fixed", "zIndex": "1000", "fontsize" : "14", "width":"400px"}),
     ]),
@@ -596,7 +579,6 @@ app.layout = dbc.Container(
     Output('itr-scorecard', 'figure'),
     Output('itr-sparkline', 'figure'),
     Output('overstock-cost-scorecard', 'figure'),
-    Output('overstock-cost-sparkline', 'figure'), 
     Output('stockout-ratio-linechart', 'figure'), 
     Output('itr-linechart', 'figure'), 
     Output('overstock-cost-linechart', 'figure'), 
@@ -616,21 +598,25 @@ def update_charts(selected_product_ids,
     global metrics_raw_data
     filtered_metrics = metrics_raw_data.copy()
     if selected_product_ids or selected_from_warehouse or selected_to_warehouse:
-        selected_products = selected_product_ids or filtered_metrics['Product_ID'].unique()
-        filtered_metrics = filtered_metrics[filtered_metrics['Product_ID'].isin(selected_products)]
-
         selected_from = selected_from_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
         selected_to = selected_to_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
         selected_warehouse = list(set(selected_from).union(set(selected_to))) \
                                 if selected_from_warehouse and selected_to_warehouse \
                                 else selected_from_warehouse or selected_to_warehouse or filtered_metrics['Warehouse_Loc_ID'].unique()
         filtered_metrics = filtered_metrics[filtered_metrics['Warehouse_Loc_ID'].isin(selected_warehouse)]
-        
+        barpolar_data = normalize_barpolar(preprocess_barpolar(filtered_metrics))
+
+        selected_products = selected_product_ids or filtered_metrics['Product_ID'].unique()
+        filtered_metrics = filtered_metrics[filtered_metrics['Product_ID'].isin(selected_products)]
+        barpolar_data = barpolar_data[barpolar_data['Product_ID'].isin(selected_products)]
+    else:
+        barpolar_data = normalize_barpolar(preprocess_barpolar(filtered_metrics))
+
     stockout_data = preprocess_stockout(filtered_metrics)
     itr_data = preprocess_itr(filtered_metrics)
     overstock_data = preprocess_overstock(filtered_metrics)
     barpolar_data = normalize_barpolar(preprocess_barpolar(filtered_metrics))
-    forecast_data = preprocess_fct_vs_act(filtered_metrics)
+    forecast_data = preprocess_fct_vs_act(filtered_metrics)             
 
     return [
         create_stockout_scorecard(stockout_data),
@@ -638,7 +624,6 @@ def update_charts(selected_product_ids,
         create_itr_scorecard(itr_data),
         create_itr_sparkline(itr_data),
         create_overstock_cost_scorecard(overstock_data),
-        create_overstock_cost_sparkline(overstock_data),
         create_stockout_linechart(stockout_data),
         create_itr_linechart(itr_data),
         create_overstock_cost_linechart(overstock_data),

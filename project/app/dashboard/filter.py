@@ -5,6 +5,7 @@ import pandas as pd
 def product_filter(stock_pivot):
     return dcc.Dropdown(
         id='product_filter_dropdown',
+        className='filter-dropdown',
         options=[
             {'label': val, 'value': val} for val in sorted(stock_pivot['Product_ID'].unique())
         ],
@@ -15,6 +16,7 @@ def product_filter(stock_pivot):
 def from_filter(optim_df):
     return dcc.Dropdown(
         id='from_filter_dropdown',
+        className='filter-dropdown',
         options=[
             {'label': val, 'value': val} for val in sorted(optim_df['From'].unique())
         ],
@@ -25,6 +27,7 @@ def from_filter(optim_df):
 def to_filter(optim_df):
     return dcc.Dropdown(
         id='to_filter_dropdown',
+        className='filter-dropdown',
         options=[
             {'label': val, 'value': val} for val in sorted(optim_df['To'].unique())
         ],

@@ -5,29 +5,26 @@ from .helper import format_number, format_number_v2
 def create_overstock_cost_scorecard(overstock_cost):  
     # Output latest overstock_cost data
     overstock_cost_yr_q = sorted(overstock_cost['Year_Quarter'].unique())
-    latest_overstock_cost = overstock_cost[overstock_cost['Year_Quarter'] == overstock_cost['Year_Quarter'].max()]['Overstock_Cost'].values[0]
+    latest_overstock_cost = overstock_cost[overstock_cost['Year_Quarter'] == overstock_cost_yr_q[-1]]['Overstock_Cost'].values[0]
     latestmin1_overstock_cost = overstock_cost[overstock_cost['Year_Quarter'] == overstock_cost_yr_q[-2]]['Overstock_Cost'].values[0]
-
-    formatted_value, suffix = format_number(latest_overstock_cost)
 
     # Create the scorecard figure
     fig = go.Figure()
 
     fig.add_trace(go.Indicator(
         mode='number+delta',
-        value=formatted_value,
+        value=latest_overstock_cost,
         number={
             'valueformat': ',.0f',
             'prefix': 'Rp', 
-            'suffix': suffix, 
-            'font': {'size':22,'color': 'whitesmoke'}
+            'font': {'color': 'whitesmoke'},
         },
         delta={
             'position': 'bottom', 
             'reference': latestmin1_overstock_cost,
             'relative': True,
             'valueformat': '.1%',
-            'decreasing': {'color': '#b62a4e'},
+            'decreasing': {'color': '#34ad82'},
             'increasing': {'color': 'rgba(255, 80, 80, 0.9)'},
         },
         domain={'x': [0, 1], 'y': [0, 1]}
@@ -66,6 +63,17 @@ def create_overstock_cost_sparkline(overstock_cost):
     return fig
 
 def create_overstock_cost_linechart(overstock_cost):
+    quarter_mapping = {
+        '2023-Q1': 'Q1-23',
+        '2023-Q2': 'Q2-23',
+        '2023-Q3': 'Q3-23',
+        '2023-Q4': 'Q4-23',
+        '2024-Q1': 'Q1-24',
+        '2024-Q2': 'Q2-24',
+        '2024-Q3': 'Q3-24',
+        '2024-Q4': 'Q4-24'
+    }
+    
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -80,12 +88,14 @@ def create_overstock_cost_linechart(overstock_cost):
         ),
         cliponaxis=False,
         name='Overstock Cost',
-        line=dict(color='skyblue'),
+        line=dict(color='#0D92F4'),
         fill='tozeroy'
     ))
 
     fig.update_layout(
         xaxis={
+            'tickvals': overstock_cost['Year_Quarter'],
+            'ticktext': overstock_cost['Year_Quarter'].map(quarter_mapping),           
             'tickfont':{'size':10, 'color': 'whitesmoke'},
             'automargin':True,
             'gridcolor': 'rgba(255, 255, 255, 0.2)',

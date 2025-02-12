@@ -63,6 +63,16 @@ def create_stockout_sparkline(stockout_ratio):
     return fig
 
 def create_stockout_linechart(stockout_ratio):
+    quarter_mapping = {
+        '2023-Q1': 'Q1-23',
+        '2023-Q2': 'Q2-23',
+        '2023-Q3': 'Q3-23',
+        '2023-Q4': 'Q4-23',
+        '2024-Q1': 'Q1-24',
+        '2024-Q2': 'Q2-24',
+        '2024-Q3': 'Q3-24',
+        '2024-Q4': 'Q4-24'
+    }
     # Create the area chart figure
     fig = go.Figure()
 
@@ -78,12 +88,14 @@ def create_stockout_linechart(stockout_ratio):
         ),
         cliponaxis=False,
         name='Stockout Ratio',
-        line=dict(color='royalblue'),
+        line=dict(color='#87A2FF'),
         fill='tozeroy'
     ))
 
     fig.update_layout(
         xaxis={
+            'tickvals': stockout_ratio['Year_Quarter'],
+            'ticktext': stockout_ratio['Year_Quarter'].map(quarter_mapping),
             'tickfont':{'size':10, 'color': 'whitesmoke'},
             'automargin':True,
             'gridcolor': 'rgba(255, 255, 255, 0.2)',

@@ -61,6 +61,17 @@ def create_itr_sparkline(itr):
     return fig
 
 def create_itr_linechart(itr):
+    quarter_mapping = {
+        '2023-Q1': 'Q1-23',
+        '2023-Q2': 'Q2-23',
+        '2023-Q3': 'Q3-23',
+        '2023-Q4': 'Q4-23',
+        '2024-Q1': 'Q1-24',
+        '2024-Q2': 'Q2-24',
+        '2024-Q3': 'Q3-24',
+        '2024-Q4': 'Q4-24'
+    }
+    
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -75,12 +86,14 @@ def create_itr_linechart(itr):
         ),
         cliponaxis=False,
         name='ITR',
-        line=dict(color='#483D8B'),
+        line=dict(color='#77CDFF'),
         fill='tozeroy'
     ))
 
     fig.update_layout(
         xaxis={
+            'tickvals': itr['Year_Quarter'],
+            'ticktext': itr['Year_Quarter'].map(quarter_mapping),
             'tickfont':{'size':10, 'color': 'whitesmoke'},
             'automargin':True,
             'gridcolor': 'rgba(255, 255, 255, 0.2)',

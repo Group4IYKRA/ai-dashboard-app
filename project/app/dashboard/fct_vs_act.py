@@ -21,7 +21,7 @@ def create_fct_vs_act_linechart(fct_vs_act):
         textfont=dict(size=9.5, color='whitesmoke'),
         cliponaxis=False,
         name='Actual',
-        line=dict(color='royalblue'),
+        line=dict(color='#0D92F4'),
     ))
 
     fig.add_trace(go.Scatter(
@@ -33,7 +33,7 @@ def create_fct_vs_act_linechart(fct_vs_act):
         textfont=dict(size=9.5, color='whitesmoke'),
         cliponaxis=False,
         name='Forecast',
-        line=dict(color='#FF6F61'),
+        line=dict(color='#f2b344'),
     ))
 
     fig.update_layout(
