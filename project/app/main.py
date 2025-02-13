@@ -12,8 +12,8 @@ import os
 from flask_socketio import SocketIO
 from sklearn.preprocessing import MinMaxScaler
 import threading
-from concurrent.futures import ProcessPoolExecutor
-import dask.dataframe as dd
+# from concurrent.futures import ProcessPoolExecutor
+# import dask.dataframe as dd
 
 # Get all necessary dfs
 current_dir = os.getcwd()
@@ -104,58 +104,72 @@ def preprocess_itr(metrics_raw_data):
 # Preprocessing for barpolar
 @cache.memoize(timeout=600)
 def preprocess_barpolar(metrics_raw_data, target_quarter='2024-Q4'):
-    ddf = dd.from_pandas(metrics_raw_data, npartitions=4)
-    ddf = ddf[ddf['Year_Quarter']==target_quarter]
+    metrics_raw_data = metrics_raw_data[metrics_raw_data['Year_Quarter'] == target_quarter]
     
-    def calculate_inventory_turnover_ratio(ddf: dd.DataFrame):
+    def calculate_inventory_turnover_ratio(metrics_raw_data):
         # Group by quarter and product to get sales and date ranges
-        inventory_metrics = ddf.sort_values(by='Date').groupby(
-            ['Year_Quarter', 'Product_ID'],
+        inventory_metrics = metrics_raw_data.groupby(
+            ['Year_Quarter', 'Product_ID'], 
+            as_index=False
         ).agg({
             'Date': ['min', 'max'],
-            'Daily_Sales': 'sum',
-            'Stock_Level': ['first', 'last'],
-        }).reset_index().compute()
+            'Daily_Sales': 'sum'
+        })
         
         # Clean up column names
         inventory_metrics.columns = ['_'.join(col).strip() if col[1] else col[0] 
-                                for col in inventory_metrics.columns.values]
+                                    for col in inventory_metrics.columns.values]
         
+        # Filter for target quarter
+        inventory_metrics = inventory_metrics[inventory_metrics['Year_Quarter'] == target_quarter]
+        
+        # Calculate stock levels for start and end dates
+        stock_levels = {}
+        for date_type in ['min', 'max']:
+            stock_levels[date_type] = {
+                prod: metrics_raw_data[
+                    (metrics_raw_data['Product_ID'] == prod) & 
+                    (metrics_raw_data['Date'].isin(inventory_metrics[f'Date_{date_type}']))
+                ]['Stock_Level'].sum()
+                for prod in inventory_metrics['Product_ID'].unique()
+            }
+        
+        # Add stock levels to dataframe
+        inventory_metrics['Earliest_Stock_Sum'] = inventory_metrics['Product_ID'].map(stock_levels['min'])
+        inventory_metrics['Latest_Stock_Sum'] = inventory_metrics['Product_ID'].map(stock_levels['max'])
         
         # Calculate ITR
         inventory_metrics['ITR'] = (
             inventory_metrics['Daily_Sales_sum'] / 
-            ((inventory_metrics['Stock_Level_last'] + inventory_metrics['Stock_Level_first']) / 2)
+            ((inventory_metrics['Latest_Stock_Sum'] + inventory_metrics['Earliest_Stock_Sum']) / 2)
         ).round(2)
         
         return inventory_metrics[['Year_Quarter', 'Product_ID', 'ITR']]
 
-    def calculate_stockout_ratio(ddf: dd.DataFrame):
-        stockout_metrics = ddf.groupby(
-            ['Year_Quarter', 'Product_ID'], 
+    def calculate_stockout_ratio(df):
+        stockout_metrics = df.groupby(
+            ['Year_Quarter', 'Product_ID'],
         ).agg({
             'Daily_Sales': 'sum',
             'Lost_Sales': 'sum'
-        }).reset_index().compute()
-        
-        stockout_metrics = stockout_metrics[stockout_metrics['Year_Quarter'] == target_quarter]
+        }).reset_index()
         
         stockout_metrics['stockout_ratio'] = (
             (stockout_metrics['Lost_Sales'] / 
-            (stockout_metrics['Lost_Sales'] + stockout_metrics['Daily_Sales'])) * 100
+             (stockout_metrics['Lost_Sales'] + stockout_metrics['Daily_Sales'])) * 100
         ).round(2)
         
         return stockout_metrics[['Year_Quarter', 'Product_ID', 'stockout_ratio']]
 
-    def calculate_overstock_cost(ddf: dd.DataFrame):       
+    def calculate_overstock_cost(df):
         # Calculate daily metrics
-        daily_metrics = ddf.groupby(
-            ['Year_Quarter', 'Product_ID', 'Date'], 
+        daily_metrics = df.groupby(
+            ['Year_Quarter', 'Product_ID', 'Date'],
         ).agg({
             'Daily_Sales': 'sum',
             'Stock_Level': 'sum',
             'Inventory_Holding_Cost': 'mean'
-        }).reset_index().compute()
+        }).reset_index()
         
         # Calculate final metrics
         overstock_metrics = (
@@ -176,9 +190,9 @@ def preprocess_barpolar(metrics_raw_data, target_quarter='2024-Q4'):
         
         return overstock_metrics[['Year_Quarter', 'Product_ID', 'overstock_cost']]
     
-    itr_df = calculate_inventory_turnover_ratio(ddf)
-    stockout_df = calculate_stockout_ratio(ddf)
-    overstock_df = calculate_overstock_cost(ddf)
+    itr_df = calculate_inventory_turnover_ratio(metrics_raw_data)
+    stockout_df = calculate_stockout_ratio(metrics_raw_data)
+    overstock_df = calculate_overstock_cost(metrics_raw_data)
     
     # Combine all metrics
     combined_metrics = (
@@ -187,15 +201,20 @@ def preprocess_barpolar(metrics_raw_data, target_quarter='2024-Q4'):
         .merge(overstock_df, on=['Product_ID', 'Year_Quarter'])
     )
     
-    combined_metrics.rename(columns={'stockout_ratio':'Stockout Ratio', 'overstock_cost':'Overstock Cost'}, inplace=True)
+    combined_metrics.rename(columns={'stockout_ratio': 'Stockout Ratio', 'overstock_cost': 'Overstock Cost'}, inplace=True)
     
     return combined_metrics
 
 # Normalize barpolar metric for better visualization
 def normalize_barpolar(barpolar):
-    barpolar['ITR_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['ITR']])
-    barpolar['stockout_ratio_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['Stockout Ratio']])
-    barpolar['overstock_cost_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['Overstock Cost']])
+    try:
+        barpolar['ITR_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['ITR']])
+        barpolar['stockout_ratio_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['Stockout Ratio']])
+        barpolar['overstock_cost_norm'] = MinMaxScaler((1,4)).fit_transform(barpolar[['Overstock Cost']])
+    except:
+        barpolar['ITR_norm'] = barpolar['ITR']
+        barpolar['stockout_ratio_norm'] = barpolar['Stockout Ratio']
+        barpolar['overstock_cost_norm'] = barpolar['Overstock Cost']
 
     return barpolar
 
@@ -586,19 +605,11 @@ def update_charts(selected_product_ids,
         filtered_metrics = filtered_metrics[filtered_metrics['Product_ID'].isin(selected_products)]
         barpolar_data = barpolar_data[barpolar_data['Product_ID'].isin(selected_products)]
 
-    with ProcessPoolExecutor() as executor:
-        futures = {
-            'stockout_data': executor.submit(preprocess_stockout, filtered_metrics),
-            'itr_data': executor.submit(preprocess_itr, filtered_metrics),
-            'overstock_data': executor.submit(preprocess_overstock, filtered_metrics),
-            'forecast_data': executor.submit(preprocess_fct_vs_act, filtered_metrics),
-        }
-
-    stockout_data = futures['stockout_data'].result()
-    itr_data = futures['itr_data'].result()
-    overstock_data = futures['overstock_data'].result()
+    stockout_data = preprocess_stockout(filtered_metrics)
+    itr_data = preprocess_itr(filtered_metrics)
+    overstock_data = preprocess_overstock(filtered_metrics)
     barpolar_data = normalize_barpolar(preprocess_barpolar(filtered_metrics))
-    forecast_data = futures['forecast_data'].result()
+    forecast_data = preprocess_fct_vs_act(filtered_metrics)
     
     return [
         create_stockout_scorecard(stockout_data),

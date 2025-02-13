@@ -78,7 +78,7 @@ def create_barpolar_top_10(df, sort_by='Overstock Cost'):
     polar=dict(
             sector=[0, 180],
             bgcolor='#30343c',
-            domain=dict(x=[0.1,0.85], y=[0, 1]),
+            domain=dict(x=[0.15,0.85], y=[0, 1]),
             radialaxis=dict(
                 showline=False,
                 showticklabels=False, 
@@ -92,7 +92,12 @@ def create_barpolar_top_10(df, sort_by='Overstock Cost'):
                 rotation=170,
                 direction="clockwise",
                 tickvals=theta,
-                ticktext=df['Product_ID'],
+                ticktext = [
+                    f"<b>{pid}</b><br>{sort_by}<br>{value:,.0f}" if sort_by == 'Overstock Cost' 
+                    else f"<b>{pid}</b><br>{sort_by}<br>{value:,.2f}" 
+                    for pid, value in zip(df['Product_ID'], df[sort_by])
+                ],
+                tickfont=dict(size=10),
                 color='whitesmoke',
                 gridcolor='rgba(255,255,255,0.1)'
             )
