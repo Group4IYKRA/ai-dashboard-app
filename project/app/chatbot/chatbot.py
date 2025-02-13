@@ -27,7 +27,7 @@ chatbot_table_file = os.path.join(project_root, "data/query_result/chatbot_table
 data = pd.read_pickle(chatbot_table_file)
 
 # Select relevant columns for embedding
-data['combined_text'] = data['Category'] + ' ' + data['Brand'] + ' ' + data['Seasonality']
+data['combined_text'] = data['Category'] + ' ' + data['Brand'] + ' ' + data['Seasonality'] + ' ' + data['Product_ID'] + ' '  + data['Color'] + ' ' + data['Warehouse_ID'] + ' ' + data['Warehouse_Location'] + ' ' + data['Store_ID'] + ' ' + data['Store_Location'] + ' ' + data['Supplier_ID'] + ' ' + data['Supplier_Name']
 
 # 2. Generate embeddings
 model = SentenceTransformer('all-MiniLM-L6-v2')  # Load a pre-trained embedding model
